@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run dev          # Start development server (localhost:3000)
-npm run build        # Production build (also runs type-check + lint)
+npm run build        # Production build — prefixed with chmod -R 755 . for Linux deployment compatibility
 npm run lint         # ESLint check
 
 npm run db:generate  # Regenerate Prisma client after schema changes
@@ -90,6 +90,18 @@ Database is **MySQL**. Key models and their non-obvious fields:
 - `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`
 - `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl`, `mediaType`, `metaMessageId` (unique, used for dedup)
 - `Template` — `isApproved`, `metaTemplateId`, `category`
+
+### Public (unauthenticated) pages
+`/privacy`, `/terms`, and `/data-deletion` are excluded from the NextAuth middleware matcher so Meta's crawlers and users can access them without logging in. Any new public page must be added to the exclusion pattern in `src/middleware.ts`.
+
+### Deployment
+Hosted on Hostinger (digitalcampions.com) via GitHub import (`niteshmorepune/whatsapp-dashboard`, branch `master`). Hostinger runs `npm run build` then `next start`. The `chmod -R 755 .` prefix in the build script is required because Hostinger's Linux build environment assigns restrictive permissions to directories with parentheses in their names (`(auth)`, `(dashboard)`), causing EACCES errors without it. `server.js` at the root is a custom Next.js server that reads `process.env.PORT` — required for Hostinger's Node.js hosting to bind on the correct port.
+
+After deploying, SSH into Hostinger and run:
+```bash
+npx prisma migrate deploy   # apply DB migrations
+npm run db:seed              # create admin user + sample templates
+```
 
 ### No test suite
 There are no unit or integration tests. Type-checking (`npx tsc --noEmit`) and the production build (`npm run build`) are the main correctness checks.
