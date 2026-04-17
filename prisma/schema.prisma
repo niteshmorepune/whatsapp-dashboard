@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+enum ConversationStatus {
+  OPEN
+  RESOLVED
+  PENDING
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model Agent {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          Role           @default(AGENT)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  conversations Conversation[]
+  messages      Message[]
+}
+
+model Contact {
+  id             String         @id @default(cuid())
+  phone          String         @unique
+  name           String?
+  email          String?
+  tags           Json           @default("[]")
+  optedOut       Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  conversations  Conversation[]
+}
+
+model Conversation {
+  id               String             @id @default(cuid())
+  contactId        String
+  agentId          String?
+  status           ConversationStatus @default(OPEN)
+  lastMessageAt    DateTime           @default(now())
+  windowExpiresAt  DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  contact          Contact            @relation(fields: [contactId], references: [id])
+  agent            Agent?             @relation(fields: [agentId], references: [id])
+  messages         Message[]
+
+  @@index([contactId])
+  @@index([agentId])
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  direction      MessageDirection
+  content        String           @db.Text
+  mediaUrl       String?
+  mediaType      String?
+  metaMessageId  String?          @unique
+  status         MessageStatus    @default(SENT)
+  sentByAgentId  String?
+  createdAt      DateTime         @default(now())
+  conversation   Conversation     @relation(fields: [conversationId], references: [id])
+  sentByAgent    Agent?           @relation(fields: [sentByAgentId], references: [id])
+
+  @@index([conversationId])
+  @@index([sentByAgentId])
+}
+
+model Template {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  content        String   @db.Text
+  category       String
+  isApproved     Boolean  @default(false)
+  metaTemplateId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
