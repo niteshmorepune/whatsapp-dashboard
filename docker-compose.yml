@@ -21,7 +21,7 @@ services:
       - "traefik.http.routers.whatsapp-dashboard.rule=Host(`digitalcampions.com`) || Host(`www.digitalcampions.com`)"
       - "traefik.http.routers.whatsapp-dashboard.entrypoints=web,websecure"
       - "traefik.http.routers.whatsapp-dashboard.tls=true"
-      - "traefik.http.routers.whatsapp-dashboard.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.whatsapp-dashboard.tls.certresolver=myhttpchallenge"
       - "traefik.http.services.whatsapp-dashboard.loadbalancer.server.port=3000"
       - "traefik.docker.network=root_default"
 
