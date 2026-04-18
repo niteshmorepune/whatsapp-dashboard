@@ -58,7 +58,9 @@ Default seed credentials: `admin@youragency.com` / `Admin@1234`.
 - `src/app/api/` — All API routes. Server-only. Use `getServerSession(authOptions)` at the top of every handler.
 
 ### Authentication flow
-`src/middleware.ts` uses `next-auth/middleware` to block all routes except `/login`, `/api/auth/**`, and `/api/webhook` (Meta requires the webhook to be unauthenticated). `/api/sse` is **not** excluded and is therefore also protected by middleware. The dashboard layout additionally calls `useSession()` client-side and redirects if unauthenticated. JWT carries `id` and `role` fields — the type augmentation lives in `src/types/index.ts` (`declare module "next-auth"`).
+`src/middleware.ts` uses `next-auth/middleware` to block all routes except `/login`, `/api/auth/**`, `/api/webhook`, and Next.js static assets. `/api/sse` is **not** excluded and is therefore also protected. The dashboard layout additionally calls `useSession()` client-side and redirects if unauthenticated.
+
+JWT (session strategy) carries `id` and `role` fields — the type augmentation lives in `src/types/index.ts`. Login rejects agents with `isActive: false`. After a profile update (`PATCH /api/profile`), call `updateSession()` from `useSession()` to sync the client-side session; the JWT cookie is not re-issued until the next sign-in, so `session.user.name`/`email` will reflect the old value server-side until then.
 
 ### Real-time (Server-Sent Events)
 Real-time uses the browser's native `EventSource` API. There is no third-party broker.
@@ -72,11 +74,19 @@ Named events and their payloads:
 - `message-status` → `{ conversationId, messageId, status }`
 - `conversation-updated` → `{ conversation }`
 
+The TypeScript interfaces for these events in `src/types/index.ts` are named `PusherNewMessageEvent`, `PusherMessageStatusEvent`, `PusherConversationUpdatedEvent` — a legacy name from an earlier Pusher integration. They describe SSE payloads, not Pusher channels.
+
 ### 24-hour messaging window
 `Conversation.windowExpiresAt` is set to `now + 24h` whenever an inbound message arrives (in `api/webhook`). The send API (`api/send`) checks `isWindowExpired(windowExpiresAt)` from `src/lib/utils.ts` before allowing free-form text. The `WindowBanner` component shows a live countdown when under 2 hours remain and blocks the input when expired, auto-opening the template picker.
 
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. The helper functions (`sendTextMessage`, `sendTemplateMessage`, `markMessageRead`) use an axios instance pre-configured with the bearer token. Meta API version is pinned to `v18.0`.
+
+After any deployment or access token rotation, the WABA must be subscribed to webhook events or no inbound messages will arrive:
+```bash
+curl -X POST "https://graph.facebook.com/v18.0/${META_WABA_ID}/subscribed_apps?access_token=${META_ACCESS_TOKEN}"
+```
+Verify with a GET to the same URL — response should be `{"data":[{"whatsapp_business_api_data":...}]}`, not `{"data":[]}`.
 
 ### API response convention
 All API routes return `{ error: string }` with an appropriate HTTP status on failure. No other error shape is used.
@@ -95,13 +105,32 @@ Database is **MySQL**. Key models and their non-obvious fields:
 `/privacy`, `/terms`, and `/data-deletion` are excluded from the NextAuth middleware matcher so Meta's crawlers and users can access them without logging in. Any new public page must be added to the exclusion pattern in `src/middleware.ts`.
 
 ### Deployment
-Hosted on Hostinger (digitalcampions.com) via GitHub import (`niteshmorepune/whatsapp-dashboard`, branch `master`). Hostinger runs `npm run build` then `next start`. The `chmod -R 755 .` prefix in the build script is required because Hostinger's Linux build environment assigns restrictive permissions to directories with parentheses in their names (`(auth)`, `(dashboard)`), causing EACCES errors without it. `server.js` at the root is a custom Next.js server that reads `process.env.PORT` — required for Hostinger's Node.js hosting to bind on the correct port.
+Hosted on a Hostinger VPS (Ubuntu 24.04, IP `72.60.98.246`, domain `digitalcampions.com`) via Docker Compose. The app runs alongside an existing Traefik reverse proxy and n8n instance — do **not** stop or modify those services.
 
-After deploying, SSH into Hostinger and run:
+**Stack on VPS:**
+- `/root/docker-compose.yml` — Traefik + n8n (managed separately, do not touch)
+- `/opt/app/whatsapp-dashboard/` — this app (app + MySQL containers)
+
+Traefik uses `myhttpchallenge` (HTTP-01 ACME) for TLS on `digitalcampions.com`. TLS-ALPN-01 (`mytlschallenge`) does not work because Hostinger's CDN intercepts port 443. The app container joins `root_default` (Traefik's external network) so Traefik can route to it.
+
+The `chmod -R 755 .` prefix in the build script is required because Linux assigns restrictive permissions to directories with parentheses in their names (`(auth)`, `(dashboard)`), causing EACCES errors without it. `server.js` at the root is a custom Next.js server reading `process.env.PORT`.
+
+**Deploy a new version:**
 ```bash
-npx prisma migrate deploy   # apply DB migrations
-npm run db:seed              # create admin user + sample templates
+# On VPS
+cd /opt/app/whatsapp-dashboard
+git pull
+docker compose up -d --build
 ```
+
+**First-time setup on a fresh VPS:**
+```bash
+docker compose up -d
+docker compose exec app npx prisma migrate deploy
+docker compose exec app npm run db:seed
+```
+
+The `.env` file at `/opt/app/whatsapp-dashboard/.env` is the single env file for Docker — it is read both by the compose environment substitution and by Prisma CLI inside the container. `DATABASE_URL` must use `db` (the compose service name) as the hostname, not `localhost`.
 
 ### No test suite
 There are no unit or integration tests. Type-checking (`npx tsc --noEmit`) and the production build (`npm run build`) are the main correctness checks.
@@ -110,7 +139,10 @@ There are no unit or integration tests. Type-checking (`npx tsc --noEmit`) and t
 Any API route that calls `getServerSession` (or reads headers/cookies) but declares `GET()` with **no `request` parameter** must export `export const dynamic = "force-dynamic"` — otherwise Next.js attempts static pre-rendering and throws "Dynamic server usage" at build time. Routes that already receive a `NextRequest` parameter are implicitly dynamic and do not need this export.
 
 ### Role-based access
-`session.user.role` is `"ADMIN"` or `"AGENT"`. The Agents page redirects non-admins client-side. Template approval (`PATCH /api/templates/[id]` with `isApproved`) is server-enforced to `ADMIN` only.
+`session.user.role` is `"ADMIN"` or `"AGENT"`.
+- `/agents` page redirects non-admins client-side. `PATCH /api/agents/[id]` (edit name, email, password, role, isActive) is server-enforced to `ADMIN` only.
+- `/profile` is accessible to any authenticated user and edits only their own record (`PATCH /api/profile`). Email or password changes require the current password.
+- Template approval (`PATCH /api/templates/[id]` with `isApproved`) is server-enforced to `ADMIN` only.
 
 ### Styling
 Tailwind CSS. Dark theme throughout — background `gray-950`, surfaces `gray-900`/`gray-800`. Green (`green-500`/`green-600`) is the brand accent. Use `cn()` from `src/lib/utils.ts` (clsx + tailwind-merge) for conditional classes. Toast notifications use `sonner` (`import { toast } from "sonner"`).
