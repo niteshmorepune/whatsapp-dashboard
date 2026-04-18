@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 
 export async function PATCH(
   request: NextRequest,
@@ -15,12 +16,23 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, role, isActive } = body;
+    const { name, email, password, role, isActive } = body;
+
+    if (email !== undefined) {
+      const conflict = await prisma.agent.findFirst({
+        where: { email, NOT: { id: params.id } },
+      });
+      if (conflict) {
+        return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+      }
+    }
 
     const agent = await prisma.agent.update({
       where: { id: params.id },
       data: {
         ...(name !== undefined && { name }),
+        ...(email !== undefined && { email }),
+        ...(password ? { passwordHash: await bcrypt.hash(password, 12) } : {}),
         ...(role !== undefined && { role }),
         ...(isActive !== undefined && { isActive }),
       },

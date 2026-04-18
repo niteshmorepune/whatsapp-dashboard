@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Menu } from "lucide-react";
 import { Avatar } from "./Avatar";
 
@@ -20,13 +21,13 @@ export function Header({ user, onMenuClick }: HeaderProps) {
 
       <div className="hidden lg:block" />
 
-      <div className="flex items-center gap-3">
+      <Link href="/profile" className="flex items-center gap-3 hover:opacity-80 transition">
         <div className="text-right hidden sm:block">
           <p className="text-sm font-medium text-white">{user.name}</p>
           <p className="text-xs text-gray-400 capitalize">{user.role.toLowerCase()}</p>
         </div>
         <Avatar name={user.name} size="sm" />
-      </div>
+      </Link>
     </header>
   );
 }
