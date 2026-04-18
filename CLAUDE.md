@@ -105,13 +105,13 @@ Database is **MySQL**. Key models and their non-obvious fields:
 `/privacy`, `/terms`, and `/data-deletion` are excluded from the NextAuth middleware matcher so Meta's crawlers and users can access them without logging in. Any new public page must be added to the exclusion pattern in `src/middleware.ts`.
 
 ### Deployment
-Hosted on a Hostinger VPS (Ubuntu 24.04, IP `72.60.98.246`, domain `digitalcampions.com`) via Docker Compose. The app runs alongside an existing Traefik reverse proxy and n8n instance — do **not** stop or modify those services.
+Hosted on a Hostinger VPS (Ubuntu 24.04, IP `72.60.98.246`, domain `wadesk.in`) via Docker Compose. The app runs alongside an existing Traefik reverse proxy and n8n instance — do **not** stop or modify those services.
 
 **Stack on VPS:**
 - `/root/docker-compose.yml` — Traefik + n8n (managed separately, do not touch)
 - `/opt/app/whatsapp-dashboard/` — this app (app + MySQL containers)
 
-Traefik uses `myhttpchallenge` (HTTP-01 ACME) for TLS on `digitalcampions.com`. TLS-ALPN-01 (`mytlschallenge`) does not work because Hostinger's CDN intercepts port 443. The app container joins `root_default` (Traefik's external network) so Traefik can route to it.
+Traefik uses `myhttpchallenge` (HTTP-01 ACME) for TLS on `wadesk.in`. TLS-ALPN-01 (`mytlschallenge`) does not work because Hostinger's CDN intercepts port 443. The app container joins `root_default` (Traefik's external network) so Traefik can route to it.
 
 The `chmod -R 755 .` prefix in the build script is required because Linux assigns restrictive permissions to directories with parentheses in their names (`(auth)`, `(dashboard)`), causing EACCES errors without it. `server.js` at the root is a custom Next.js server reading `process.env.PORT`.
 

@@ -18,7 +18,7 @@ services:
       - root_default
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.whatsapp-dashboard.rule=Host(`digitalcampions.com`) || Host(`www.digitalcampions.com`)"
+      - "traefik.http.routers.whatsapp-dashboard.rule=Host(`wadesk.in`) || Host(`www.wadesk.in`)"
       - "traefik.http.routers.whatsapp-dashboard.entrypoints=web,websecure"
       - "traefik.http.routers.whatsapp-dashboard.tls=true"
       - "traefik.http.routers.whatsapp-dashboard.tls.certresolver=myhttpchallenge"
