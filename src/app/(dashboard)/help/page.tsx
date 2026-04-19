@@ -313,6 +313,7 @@ export default function HelpPage() {
   }
 
   return (
+    <div className="h-full overflow-y-auto">
     <div className="p-6 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -364,6 +365,7 @@ export default function HelpPage() {
       <p className="text-center text-xs text-gray-600 mt-8">
         Have a question not covered here? Contact your admin.
       </p>
+    </div>
     </div>
   );
 }
