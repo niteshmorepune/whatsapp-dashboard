@@ -20,6 +20,35 @@ const TABS: { label: string; value: ConversationStatus | "ALL" }[] = [
   { label: "Resolved", value: "RESOLVED" },
 ];
 
+const BASE_TITLE = "WhatsApp Business Dashboard";
+
+// Plays a short descending sine-wave ping via Web Audio API.
+// Creates a fresh context each time and closes it when the note ends.
+function playNotificationSound() {
+  if (typeof window === "undefined") return;
+  try {
+    const Ctx =
+      window.AudioContext ??
+      (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+    osc.onended = () => ctx.close();
+  } catch {
+    /* audio unavailable or blocked */
+  }
+}
+
 export function ConversationList({ selectedId, onSelect }: ConversationListProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [status, setStatus] = useState<ConversationStatus | "ALL">("ALL");
@@ -27,6 +56,24 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
   const [loading, setLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
+  // ── Browser notification permission ──────────────────────────────────────
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // ── Tab title badge ───────────────────────────────────────────────────────
+  const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+
+  useEffect(() => {
+    document.title = totalUnread > 0 ? `(${totalUnread}) ${BASE_TITLE}` : BASE_TITLE;
+    return () => {
+      document.title = BASE_TITLE;
+    };
+  }, [totalUnread]);
+
+  // ── Conversations fetch ───────────────────────────────────────────────────
   const fetchConversations = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -47,8 +94,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     return () => clearTimeout(t);
   }, [fetchConversations]);
 
-  // SSE real-time updates
-  // selectedId is read via ref inside the hook so no reconnect on change
+  // ── SSE real-time updates ─────────────────────────────────────────────────
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
 
@@ -67,13 +113,46 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
         );
       });
     },
-    "new-message": ({ conversation }) => {
-      // Increment unread badge only for conversations not currently open
+
+    "new-message": ({ conversation, message }) => {
+      // Always keep the list fresh
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === conversation.id);
+        const next =
+          idx === -1
+            ? [conversation, ...prev]
+            : prev.map((c, i) => (i === idx ? { ...c, ...conversation } : c));
+        return next.sort(
+          (a, b) =>
+            new Date(b.lastMessageAt).getTime() -
+            new Date(a.lastMessageAt).getTime()
+        );
+      });
+
+      // Notify only for conversations the agent isn't currently viewing
       if (conversation.id !== selectedIdRef.current) {
+        // Unread badge
         setUnreadCounts((prev) => ({
           ...prev,
           [conversation.id]: (prev[conversation.id] ?? 0) + 1,
         }));
+
+        // Sound ping
+        playNotificationSound();
+
+        // Browser notification popup (works even if tab is in background)
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          const name = conversation.contact?.name ?? conversation.contact?.phone ?? "New message";
+          const body = message.mediaType
+            ? `Sent ${message.mediaType === "image" ? "an image" : message.mediaType === "audio" ? "a voice message" : message.mediaType === "video" ? "a video" : "a document"}`
+            : message.content || "New message";
+          const notif = new Notification(name, {
+            body,
+            icon: "/favicon.ico",
+            tag: conversation.id, // replaces previous notification for same conversation
+          });
+          notif.onclick = () => window.focus();
+        }
       }
     },
   });
