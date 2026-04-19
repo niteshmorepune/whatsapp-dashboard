@@ -66,6 +66,52 @@ export interface Template {
   updatedAt: string;
 }
 
+export interface QuickReply {
+  id: string;
+  name: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactNote {
+  id: string;
+  contactId: string;
+  agentId: string;
+  content: string;
+  createdAt: string;
+  agent: { id: string; name: string };
+}
+
+export type BroadcastStatus = "DRAFT" | "SENDING" | "COMPLETED" | "FAILED";
+export type RecipientStatus = "PENDING" | "SENT" | "FAILED";
+
+export interface Broadcast {
+  id: string;
+  name: string;
+  templateId: string;
+  agentId: string;
+  status: BroadcastStatus;
+  sentCount: number;
+  failedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  template?: { id: string; name: string };
+  agent?: { id: string; name: string };
+  recipients?: BroadcastRecipient[];
+  _count?: { recipients: number };
+}
+
+export interface BroadcastRecipient {
+  id: string;
+  broadcastId: string;
+  contactId: string;
+  status: RecipientStatus;
+  metaMessageId: string | null;
+  createdAt: string;
+  contact?: { id: string; name: string | null; phone: string };
+}
+
 export interface PusherNewMessageEvent {
   message: Message;
   conversation: Conversation;

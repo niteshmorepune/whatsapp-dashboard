@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { broadcastToAll } from "@/lib/sse";
+import { broadcastToAll, sendToAgent } from "@/lib/sse";
 
 export async function POST(
   request: NextRequest,
@@ -21,6 +21,14 @@ export async function POST(
     });
 
     broadcastToAll("conversation-updated", { conversation: updated });
+
+    // Notify the newly assigned agent specifically
+    if (agentId && agentId !== session.user.id) {
+      sendToAgent(agentId, "conversation-assigned", {
+        conversation: updated,
+        assignedBy: session.user.name,
+      });
+    }
 
     return NextResponse.json(updated);
   } catch (error) {

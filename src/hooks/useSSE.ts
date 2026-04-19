@@ -21,10 +21,16 @@ export interface SSEConversationUpdatedData {
   conversation: Conversation;
 }
 
+export interface SSEConversationAssignedData {
+  conversation: Conversation;
+  assignedBy: string;
+}
+
 export interface SSEHandlers {
   "new-message"?: (data: SSENewMessageData) => void;
   "message-status"?: (data: SSEMessageStatusData) => void;
   "conversation-updated"?: (data: SSEConversationUpdatedData) => void;
+  "conversation-assigned"?: (data: SSEConversationAssignedData) => void;
 }
 
 // All named events the server ever emits (excluding the keep-alive comment)
@@ -32,6 +38,7 @@ const SSE_EVENTS = [
   "new-message",
   "message-status",
   "conversation-updated",
+  "conversation-assigned",
 ] as const;
 
 // ─── Hook ────────────────────────────────────────────────────────────────────

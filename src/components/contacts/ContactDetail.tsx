@@ -12,8 +12,10 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
+  StickyNote,
+  Send,
 } from "lucide-react";
-import { Contact, Conversation } from "@/types";
+import { Contact, Conversation, ContactNote } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { formatPhone, formatRelativeTime } from "@/lib/utils";
@@ -38,6 +40,9 @@ export function ContactDetail({
   const [deleting, setDeleting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
+  const [notes, setNotes] = useState<ContactNote[]>([]);
+  const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
   const [form, setForm] = useState({
     name: contact.name ?? "",
     email: contact.email ?? "",
@@ -50,7 +55,31 @@ export function ContactDetail({
       .then((r) => setConversations(r.data.conversations ?? []))
       .catch(() => {})
       .finally(() => setLoadingConvs(false));
+    axios.get(`/api/contacts/${contact.id}/notes`).then((r) => setNotes(r.data)).catch(() => {});
   }, [contact.id]);
+
+  async function addNote() {
+    if (!noteText.trim()) return;
+    setSavingNote(true);
+    try {
+      const res = await axios.post(`/api/contacts/${contact.id}/notes`, { content: noteText.trim() });
+      setNotes((prev) => [res.data, ...prev]);
+      setNoteText("");
+    } catch {
+      toast.error("Failed to save note");
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function deleteNote(noteId: string) {
+    try {
+      await axios.delete(`/api/contacts/${contact.id}/notes/${noteId}`);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    } catch {
+      toast.error("Failed to delete note");
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -269,6 +298,51 @@ export function ContactDetail({
               )}
             </div>
           )}
+        </div>
+
+        {/* Notes */}
+        <div className="p-4 border-b border-gray-800">
+          <h4 className="text-xs font-medium text-gray-500 mb-3 flex items-center gap-2">
+            <StickyNote className="w-3.5 h-3.5" />
+            INTERNAL NOTES
+          </h4>
+          <div className="flex gap-2 mb-3">
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Add a note visible to all agents…"
+              rows={2}
+              className="flex-1 resize-none px-2 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNote(); }
+              }}
+            />
+            <button
+              onClick={addNote}
+              disabled={savingNote || !noteText.trim()}
+              className="w-8 h-8 mt-auto flex items-center justify-center rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white transition"
+            >
+              {savingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+            </button>
+          </div>
+          <div className="space-y-2">
+            {notes.map((note) => (
+              <div key={note.id} className="p-2.5 bg-gray-800 rounded-lg border border-gray-700 group">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs text-white leading-relaxed whitespace-pre-wrap flex-1">{note.content}</p>
+                  <button
+                    onClick={() => deleteNote(note.id)}
+                    className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition flex-shrink-0"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {note.agent.name} · {new Date(note.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Conversations */}

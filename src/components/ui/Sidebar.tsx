@@ -12,6 +12,8 @@ import {
   LogOut,
   X,
   CircleUser,
+  Radio,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +25,9 @@ interface SidebarProps {
 const navItems = [
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/contacts", label: "Contacts", icon: Users },
+  { href: "/broadcasts", label: "Broadcasts", icon: Radio },
   { href: "/templates", label: "Templates", icon: FileText },
+  { href: "/quick-replies", label: "Quick Replies", icon: Zap },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
 ];
 

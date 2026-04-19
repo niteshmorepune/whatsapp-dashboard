@@ -40,6 +40,23 @@ export function encodeEvent(event: string, data: unknown): Uint8Array {
 }
 
 /**
+ * Send an event to a single agent's connections only.
+ */
+export function sendToAgent(agentId: string, event: string, data: unknown): void {
+  const controllers = connections.get(agentId);
+  if (!controllers) return;
+  const payload = encodeEvent(event, data);
+  controllers.forEach((ctrl) => {
+    try {
+      ctrl.enqueue(payload);
+    } catch {
+      controllers.delete(ctrl);
+    }
+  });
+  if (controllers.size === 0) connections.delete(agentId);
+}
+
+/**
  * Broadcast an event to every connected agent.
  * Dead controllers are pruned on write failure.
  */

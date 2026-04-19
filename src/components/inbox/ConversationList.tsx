@@ -130,7 +130,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
       });
 
       // Notify only for conversations the agent isn't currently viewing
-      if (conversation.id !== selectedIdRef.current) {
+      if (conversation.id !== selectedIdRef.current && message.direction === "INBOUND") {
         // Unread badge
         setUnreadCounts((prev) => ({
           ...prev,
@@ -154,6 +154,31 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
           notif.onclick = () => window.focus();
         }
       }
+    },
+
+    "conversation-assigned": ({ conversation, assignedBy }: { conversation: Conversation; assignedBy: string }) => {
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === conversation.id);
+        const next =
+          idx === -1
+            ? [conversation, ...prev]
+            : prev.map((c, i) => (i === idx ? { ...c, ...conversation } : c));
+        return next.sort(
+          (a, b) =>
+            new Date(b.lastMessageAt).getTime() -
+            new Date(a.lastMessageAt).getTime()
+        );
+      });
+
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        const contactName = conversation.contact?.name ?? conversation.contact?.phone ?? "A conversation";
+        new Notification("Conversation assigned to you", {
+          body: `${contactName} — assigned by ${assignedBy}`,
+          icon: "/favicon.ico",
+          tag: `assigned-${conversation.id}`,
+        });
+      }
+      playNotificationSound();
     },
   });
 
