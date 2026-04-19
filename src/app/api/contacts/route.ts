@@ -64,9 +64,12 @@ export async function POST(request: NextRequest) {
 
     if (!phone) return NextResponse.json({ error: "Phone is required" }, { status: 400 });
 
+    // Normalize: strip leading + to match how Meta webhook delivers phone numbers
+    const normalizedPhone = phone.startsWith("+") ? phone.slice(1) : phone;
+
     const contact = await prisma.contact.create({
       data: {
-        phone,
+        phone: normalizedPhone,
         name: name ?? null,
         email: email ?? null,
         tags: tags ?? [],

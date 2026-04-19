@@ -26,6 +26,8 @@ TypeScript-only check (no emit):
 npx tsc --noEmit
 ```
 
+`postinstall` runs `prisma generate` automatically on `npm install`.
+
 ## Local environment files
 
 Two env files coexist:
@@ -74,13 +76,15 @@ Named events and their payloads:
 - `message-status` → `{ conversationId, messageId, status }`
 - `conversation-updated` → `{ conversation }`
 
-The TypeScript interfaces for these events in `src/types/index.ts` are named `PusherNewMessageEvent`, `PusherMessageStatusEvent`, `PusherConversationUpdatedEvent` — a legacy name from an earlier Pusher integration. They describe SSE payloads, not Pusher channels.
+The TypeScript interfaces for these events in `src/types/index.ts` are named `PusherNewMessageEvent`, `PusherMessageStatusEvent`, `PusherConversationUpdatedEvent` — a legacy name from an earlier Pusher integration. They describe SSE payloads, not Pusher channels. Note: these interfaces are incomplete — the actual broadcast payloads include `conversationId` for `new-message` and `message-status` events, which the interfaces omit. Do not rely on them to infer the full payload shape.
 
 ### 24-hour messaging window
-`Conversation.windowExpiresAt` is set to `now + 24h` whenever an inbound message arrives (in `api/webhook`). The send API (`api/send`) checks `isWindowExpired(windowExpiresAt)` from `src/lib/utils.ts` before allowing free-form text. The `WindowBanner` component shows a live countdown when under 2 hours remain and blocks the input when expired, auto-opening the template picker.
+`Conversation.windowExpiresAt` is set to `now + 24h` whenever an inbound message arrives (in `api/webhook`). The send API (`api/send`) checks `isWindowExpired(windowExpiresAt)` from `src/lib/utils.ts` before allowing free-form text. The `WindowBanner` component shows a live countdown when under 2 hours remain and blocks the input when expired, auto-opening the template picker. The picker is dismissible — closing it does not re-enable free-form text; the textarea stays disabled and the picker can be reopened via the template icon button.
 
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. The helper functions (`sendTextMessage`, `sendTemplateMessage`, `markMessageRead`) use an axios instance pre-configured with the bearer token. Meta API version is pinned to `v18.0`.
+
+`sendTemplateMessage` sends only the template **name** to Meta with language `en_US` and empty `components` — there is no variable substitution. Templates must already exist and be approved inside the Meta Business dashboard before they can be sent.
 
 After any deployment or access token rotation, the WABA must be subscribed to webhook events or no inbound messages will arrive:
 ```bash
@@ -88,18 +92,56 @@ curl -X POST "https://graph.facebook.com/v18.0/${META_WABA_ID}/subscribed_apps?a
 ```
 Verify with a GET to the same URL — response should be `{"data":[{"whatsapp_business_api_data":...}]}`, not `{"data":[]}`.
 
-### API response convention
-All API routes return `{ error: string }` with an appropriate HTTP status on failure. No other error shape is used.
+### API routes
+
+All routes return `{ error: string }` with an appropriate HTTP status on failure.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/agents` | ADMIN only; includes conversation count per agent |
+| POST | `/api/agents` | ADMIN only; creates agent with role AGENT by default |
+| PATCH | `/api/agents/[id]` | ADMIN only; updates name/email/password/role/isActive |
+| DELETE | `/api/agents/[id]` | ADMIN only; **soft-delete** — sets `isActive: false`, does not remove the row |
+| GET | `/api/contacts` | Search + tag filter + pagination (limit 50); tag filtering is done in-memory after query, not in SQL |
+| POST | `/api/contacts` | Creates contact; tags is a JSON array |
+| GET | `/api/contacts/[id]` | Returns contact with all conversations and latest message per conversation |
+| PATCH | `/api/contacts/[id]` | Updates name/email/tags/optedOut |
+| DELETE | `/api/contacts/[id]` | Hard-deletes contact |
+| GET | `/api/conversations` | Status filter + search; status `"ALL"` skips the filter |
+| POST | `/api/conversations` | Creates conversation for an existing contact |
+| GET | `/api/conversations/[id]` | Single conversation with contact and assigned agent |
+| PATCH | `/api/conversations/[id]` | Updates status and/or agentId; broadcasts `conversation-updated` SSE |
+| POST | `/api/conversations/[id]/assign` | Assigns or unassigns agent (agentId null = unassign); broadcasts SSE |
+| GET | `/api/conversations/[id]/messages` | Cursor-based pagination (limit 50); pass `cursor` (messageId) for older pages |
+| POST | `/api/send` | Sends text or template; text blocked when window expired, templates always allowed |
+| GET | `/api/templates` | Returns all templates; **isApproved filtering happens on the client**, not here |
+| POST | `/api/templates` | Creates template with `isApproved: false` |
+| PATCH | `/api/templates/[id]` | Updates template; `isApproved` field restricted to ADMIN |
+| DELETE | `/api/templates/[id]` | ADMIN only |
+| GET | `/api/profile` | Returns own id/name/email/role |
+| PATCH | `/api/profile` | Updates own profile; email or password change requires `currentPassword` |
+| GET | `/api/analytics` | Computes: conversations today, open count, avg response time (minutes), messages today, 30-day trend, status breakdown, per-agent performance |
+| POST | `/api/webhook` | Public (unauthenticated); receives Meta webhook events; sets `windowExpiresAt` on inbound messages |
 
 ### Prisma
 Using **Prisma v5** (not v7). The `prisma` singleton is in `src/lib/prisma.ts` with a `globalThis` cache to avoid multiple instances during hot reload. After any `prisma/schema.prisma` change, always run `npm run db:generate`.
 
 Database is **MySQL**. Key models and their non-obvious fields:
 - `Agent` — `passwordHash`, `role: ADMIN | AGENT`, `isActive`
-- `Contact` — `phone` (unique), `tags` (JSON array), `optedOut`
+- `Contact` — `phone` (unique), `tags` (JSON array), `optedOut`. **Phone is stored without a `+` prefix** (e.g., `919028099919`), matching how Meta's webhook delivers the `from` field. `POST /api/contacts` normalizes by stripping any leading `+` before saving. `formatPhone()` adds the visual `+` for display only and must never be used as a lookup key. Passing a `+`-prefixed number directly to `prisma.contact.findUnique({ where: { phone } })` will silently miss the record.
 - `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`
 - `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl`, `mediaType`, `metaMessageId` (unique, used for dedup)
 - `Template` — `isApproved`, `metaTemplateId`, `category`
+
+### Utilities (`src/lib/utils.ts`)
+Beyond `cn()` and `isWindowExpired()`:
+- `formatMessageTime()` — today → `HH:mm`, yesterday → "Yesterday", else `dd/MM/yyyy`
+- `formatFullTime()` — `dd MMM yyyy, HH:mm`
+- `formatRelativeTime()` — date-fns distance-to-now with suffix
+- `formatPhone()` — formats as `+XX XXXX XXXX XXXX` with smart spacing
+- `getInitials()` — two-letter initials for avatars
+- `getWindowTimeLeft()` — returns ms remaining until window expiry
+- `truncate()` — ellipsis truncation
 
 ### Public (unauthenticated) pages
 `/privacy`, `/terms`, and `/data-deletion` are excluded from the NextAuth middleware matcher so Meta's crawlers and users can access them without logging in. Any new public page must be added to the exclusion pattern in `src/middleware.ts`.
@@ -113,7 +155,7 @@ Hosted on a Hostinger VPS (Ubuntu 24.04, IP `72.60.98.246`, domain `wadesk.in`) 
 
 Traefik uses `myhttpchallenge` (HTTP-01 ACME) for TLS on `wadesk.in`. TLS-ALPN-01 (`mytlschallenge`) does not work because Hostinger's CDN intercepts port 443. The app container joins `root_default` (Traefik's external network) so Traefik can route to it.
 
-The `chmod -R 755 .` prefix in the build script is required because Linux assigns restrictive permissions to directories with parentheses in their names (`(auth)`, `(dashboard)`), causing EACCES errors without it. `server.js` at the root is a custom Next.js server reading `process.env.PORT`.
+The `chmod -R 755 .` prefix in the build script is required because Linux assigns restrictive permissions to directories with parentheses in their names (`(auth)`, `(dashboard)`), causing EACCES errors without it. `server.js` at the root is a custom Next.js server that reads `process.env.PORT` (default 3000) and runs in production mode — used so Docker can inject the port via env var.
 
 **Deploy a new version:**
 ```bash
@@ -143,6 +185,7 @@ Any API route that calls `getServerSession` (or reads headers/cookies) but decla
 - `/agents` page redirects non-admins client-side. `PATCH /api/agents/[id]` (edit name, email, password, role, isActive) is server-enforced to `ADMIN` only.
 - `/profile` is accessible to any authenticated user and edits only their own record (`PATCH /api/profile`). Email or password changes require the current password.
 - Template approval (`PATCH /api/templates/[id]` with `isApproved`) is server-enforced to `ADMIN` only.
+- `GET /api/agents` is ADMIN-only. The `AssignAgent` component in the thread header calls this endpoint; non-admin users will see a permanently empty dropdown because the request fails silently. If agents need to reassign conversations, the GET endpoint's role restriction would need to be relaxed.
 
 ### Styling
-Tailwind CSS. Dark theme throughout — background `gray-950`, surfaces `gray-900`/`gray-800`. Green (`green-500`/`green-600`) is the brand accent. Use `cn()` from `src/lib/utils.ts` (clsx + tailwind-merge) for conditional classes. Toast notifications use `sonner` (`import { toast } from "sonner"`).
+Tailwind CSS. Dark theme throughout — background `gray-950`, surfaces `gray-900`/`gray-800`. Green (`green-500`/`green-600`) is the brand accent. Use `cn()` from `src/lib/utils.ts` (clsx + tailwind-merge) for conditional classes. Toast notifications use `sonner` (`import { toast } from "sonner"`). The emoji picker (`@emoji-mart/react`) is dynamically imported with `ssr: false` in `MessageInput`.

@@ -147,12 +147,12 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 bg-gray-900 border-b border-gray-800 flex items-center justify-between gap-3 flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="px-4 py-3 bg-gray-900 border-b border-gray-800 flex flex-wrap items-center gap-x-3 gap-y-2 flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <Avatar name={displayName} size="md" />
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-white truncate">{displayName}</h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Phone className="w-3 h-3 text-gray-500" />
               <span className="text-xs text-gray-400">{formatPhone(contact.phone)}</span>
               <Badge
@@ -170,7 +170,7 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <AssignAgent
             conversation={conversation}
             onAssigned={setConversation}
@@ -178,6 +178,7 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
           <button
             onClick={handleResolve}
             disabled={resolving}
+            title={conversation.status === "RESOLVED" ? "Reopen" : "Resolve"}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               conversation.status === "RESOLVED"
                 ? "bg-gray-700 hover:bg-gray-600 text-gray-300"
@@ -189,7 +190,9 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
             ) : (
               <CheckCircle className="w-3 h-3" />
             )}
-            {conversation.status === "RESOLVED" ? "Reopen" : "Resolve"}
+            <span className="hidden sm:inline">
+              {conversation.status === "RESOLVED" ? "Reopen" : "Resolve"}
+            </span>
           </button>
         </div>
       </div>

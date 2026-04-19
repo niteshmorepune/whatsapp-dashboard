@@ -199,7 +199,7 @@ export function MessageInput({
       {/* Template Modal */}
       <Modal
         isOpen={showTemplates}
-        onClose={() => !windowExpired && setShowTemplates(false)}
+        onClose={() => setShowTemplates(false)}
         title="Select Template"
         className="max-w-xl"
       >

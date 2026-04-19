@@ -7,6 +7,7 @@ import { ContactDetail } from "@/components/contacts/ContactDetail";
 
 export default function ContactsPage() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [tableKey, setTableKey] = useState(0);
 
   return (
     <div className="h-full flex">
@@ -16,6 +17,7 @@ export default function ContactsPage() {
         } flex-1 flex-col`}
       >
         <ContactsTable
+          key={tableKey}
           onSelect={setSelectedContact}
           selectedId={selectedContact?.id ?? null}
         />
@@ -27,6 +29,10 @@ export default function ContactsPage() {
             contact={selectedContact}
             onClose={() => setSelectedContact(null)}
             onUpdate={(updated) => setSelectedContact(updated)}
+            onDelete={() => {
+              setSelectedContact(null);
+              setTableKey((k) => k + 1);
+            }}
           />
         </div>
       )}

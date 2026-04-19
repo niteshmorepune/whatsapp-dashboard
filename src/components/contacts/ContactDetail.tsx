@@ -11,6 +11,7 @@ import {
   MessageSquare,
   CheckCircle,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import { Contact, Conversation } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -22,15 +23,19 @@ interface ContactDetailProps {
   contact: Contact;
   onClose: () => void;
   onUpdate: (updated: Contact) => void;
+  onDelete?: (id: string) => void;
 }
 
 export function ContactDetail({
   contact,
   onClose,
   onUpdate,
+  onDelete,
 }: ContactDetailProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [form, setForm] = useState({
@@ -77,6 +82,21 @@ export function ContactDetail({
       toast.success(res.data.optedOut ? "Contact opted out" : "Contact opted back in");
     } catch {
       toast.error("Failed to update opt-out status");
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await axios.delete(`/api/contacts/${contact.id}`);
+      toast.success("Contact deleted");
+      onDelete?.(contact.id);
+      onClose();
+    } catch {
+      toast.error("Failed to delete contact");
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -218,6 +238,37 @@ export function ContactDetail({
               </>
             )}
           </div>
+
+          {/* Delete */}
+          {!editing && (
+            <div className="mt-2">
+              {confirmDelete ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="flex-1 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="flex-1 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg transition flex items-center justify-center gap-1"
+                  >
+                    {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                    Confirm Delete
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-full py-1.5 text-xs bg-gray-800 hover:bg-red-900/40 border border-gray-700 hover:border-red-700 text-gray-400 hover:text-red-400 rounded-lg transition flex items-center justify-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" /> Delete Contact
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Conversations */}
