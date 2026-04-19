@@ -21,9 +21,10 @@ npx prisma migrate dev --name <description>   # Creates + applies a new migratio
 npm run db:generate                            # Regenerate client
 ```
 
-TypeScript-only check (no emit):
+TypeScript + lint check (run both before committing — the production build enforces both):
 ```bash
 npx tsc --noEmit
+npm run lint
 ```
 
 `postinstall` runs `prisma generate` automatically on `npm install`.
@@ -79,18 +80,31 @@ Named events and their payloads:
 The TypeScript interfaces for these events in `src/types/index.ts` are named `PusherNewMessageEvent`, `PusherMessageStatusEvent`, `PusherConversationUpdatedEvent` — a legacy name from an earlier Pusher integration. They describe SSE payloads, not Pusher channels. Note: these interfaces are incomplete — the actual broadcast payloads include `conversationId` for `new-message` and `message-status` events, which the interfaces omit. Do not rely on them to infer the full payload shape.
 
 ### 24-hour messaging window
-`Conversation.windowExpiresAt` is set to `now + 24h` whenever an inbound message arrives (in `api/webhook`). The send API (`api/send`) checks `isWindowExpired(windowExpiresAt)` from `src/lib/utils.ts` before allowing free-form text. The `WindowBanner` component shows a live countdown when under 2 hours remain and blocks the input when expired, auto-opening the template picker. The picker is dismissible — closing it does not re-enable free-form text; the textarea stays disabled and the picker can be reopened via the template icon button.
+`Conversation.windowExpiresAt` is set to `now + 24h` whenever an inbound message arrives (in `api/webhook`). The send API (`api/send`) checks `isWindowExpired(windowExpiresAt)` from `src/lib/utils.ts` before allowing free-form messages. Only template messages bypass the expiry check — all other types (text, image, document, audio, video) are blocked when the window is expired. The `WindowBanner` component shows a live countdown when under 2 hours remain and blocks the input when expired, auto-opening the template picker. The picker is dismissible — closing it does not re-enable the input; it can be reopened via the template icon button.
 
 ### Meta API
-All Meta Cloud API calls go through `src/lib/meta.ts`. The helper functions (`sendTextMessage`, `sendTemplateMessage`, `markMessageRead`) use an axios instance pre-configured with the bearer token. Meta API version is pinned to `v18.0`.
+All Meta Cloud API calls go through `src/lib/meta.ts`. The helper functions use an axios instance pre-configured with the bearer token. Meta API version is pinned to `v18.0`.
 
-`sendTemplateMessage` sends only the template **name** to Meta with language `en_US` and empty `components` — there is no variable substitution. Templates must already exist and be approved inside the Meta Business dashboard before they can be sent.
+- `sendTextMessage(to, text)` — sends a plain text message
+- `sendTemplateMessage(to, templateName)` — sends only the template **name** with language `en_US` and empty `components`; no variable substitution. Template must exist and be approved in Meta Business Manager first.
+- `sendMediaMessage(to, mediaType, mediaId, caption?, filename?)` — sends image/document/audio/video by Meta media ID. For documents, `filename` is shown to the recipient.
+- `markMessageRead(messageId)` — marks a message as read
 
 After any deployment or access token rotation, the WABA must be subscribed to webhook events or no inbound messages will arrive:
 ```bash
 curl -X POST "https://graph.facebook.com/v18.0/${META_WABA_ID}/subscribed_apps?access_token=${META_ACCESS_TOKEN}"
 ```
 Verify with a GET to the same URL — response should be `{"data":[{"whatsapp_business_api_data":...}]}`, not `{"data":[]}`.
+
+### Media attachments
+Meta media cannot be fetched directly from the browser — Meta's CDN requires an `Authorization: Bearer` header. Two routes handle this:
+
+- **`GET /api/media/[id]`** — proxies the media file from Meta. Resolves the media ID to a download URL via `GET /v18.0/{id}`, then fetches and streams the file. Add `?download=1&filename=foo.pdf` to force a browser download instead of inline display.
+- **`POST /api/media/upload`** — accepts a `multipart/form-data` file upload from the browser, forwards it to `POST /v18.0/{phoneNumberId}/media`, and returns `{ mediaId }`. Size limits: 16 MB for image/audio/video, 100 MB for documents.
+
+Outbound media flow: browser uploads file → `/api/media/upload` returns `mediaId` → `/api/send` called with `{ type, mediaId, content (caption), filename }`.
+
+`Message.mediaUrl` stores the Meta media ID for both inbound (set by webhook) and outbound (set by send route) messages. `MessageBubble` renders images inline, audio/video as native players, and documents as a download link using `/api/media/{mediaUrl}`.
 
 ### API routes
 
@@ -103,7 +117,7 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 | PATCH | `/api/agents/[id]` | ADMIN only; updates name/email/password/role/isActive |
 | DELETE | `/api/agents/[id]` | ADMIN only; **soft-delete** — sets `isActive: false`, does not remove the row |
 | GET | `/api/contacts` | Search + tag filter + pagination (limit 50); tag filtering is done in-memory after query, not in SQL |
-| POST | `/api/contacts` | Creates contact; tags is a JSON array |
+| POST | `/api/contacts` | Creates contact; normalizes phone by stripping leading `+`; tags is a JSON array |
 | GET | `/api/contacts/[id]` | Returns contact with all conversations and latest message per conversation |
 | PATCH | `/api/contacts/[id]` | Updates name/email/tags/optedOut |
 | DELETE | `/api/contacts/[id]` | Hard-deletes contact |
@@ -113,7 +127,9 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 | PATCH | `/api/conversations/[id]` | Updates status and/or agentId; broadcasts `conversation-updated` SSE |
 | POST | `/api/conversations/[id]/assign` | Assigns or unassigns agent (agentId null = unassign); broadcasts SSE |
 | GET | `/api/conversations/[id]/messages` | Cursor-based pagination (limit 50); pass `cursor` (messageId) for older pages |
-| POST | `/api/send` | Sends text or template; text blocked when window expired, templates always allowed |
+| POST | `/api/send` | Sends text, template, image, document, audio, or video; only templates bypass window expiry |
+| GET | `/api/media/[id]` | Proxies Meta media file to browser; supports `?download=1&filename=` |
+| POST | `/api/media/upload` | Uploads browser file to Meta, returns `{ mediaId }` |
 | GET | `/api/templates` | Returns all templates; **isApproved filtering happens on the client**, not here |
 | POST | `/api/templates` | Creates template with `isApproved: false` |
 | PATCH | `/api/templates/[id]` | Updates template; `isApproved` field restricted to ADMIN |
@@ -130,7 +146,7 @@ Database is **MySQL**. Key models and their non-obvious fields:
 - `Agent` — `passwordHash`, `role: ADMIN | AGENT`, `isActive`
 - `Contact` — `phone` (unique), `tags` (JSON array), `optedOut`. **Phone is stored without a `+` prefix** (e.g., `919028099919`), matching how Meta's webhook delivers the `from` field. `POST /api/contacts` normalizes by stripping any leading `+` before saving. `formatPhone()` adds the visual `+` for display only and must never be used as a lookup key. Passing a `+`-prefixed number directly to `prisma.contact.findUnique({ where: { phone } })` will silently miss the record.
 - `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`
-- `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl`, `mediaType`, `metaMessageId` (unique, used for dedup)
+- `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl` (Meta media ID for both inbound and outbound), `mediaType` (image/document/audio/video/null), `metaMessageId` (unique, used for dedup)
 - `Template` — `isApproved`, `metaTemplateId`, `category`
 
 ### Utilities (`src/lib/utils.ts`)
@@ -175,10 +191,13 @@ docker compose exec app npm run db:seed
 The `.env` file at `/opt/app/whatsapp-dashboard/.env` is the single env file for Docker — it is read both by the compose environment substitution and by Prisma CLI inside the container. `DATABASE_URL` must use `db` (the compose service name) as the hostname, not `localhost`.
 
 ### No test suite
-There are no unit or integration tests. Type-checking (`npx tsc --noEmit`) and the production build (`npm run build`) are the main correctness checks.
+There are no unit or integration tests. Type-checking (`npx tsc --noEmit`) and the production build (`npm run build`) are the main correctness checks. **The production build runs ESLint as an error** — always run `npm run lint` locally before pushing.
 
 ### `export const dynamic = "force-dynamic"`
 Any API route that calls `getServerSession` (or reads headers/cookies) but declares `GET()` with **no `request` parameter** must export `export const dynamic = "force-dynamic"` — otherwise Next.js attempts static pre-rendering and throws "Dynamic server usage" at build time. Routes that already receive a `NextRequest` parameter are implicitly dynamic and do not need this export.
+
+### ESLint conventions
+- `@next/next/no-img-element` — Next.js flags raw `<img>` tags. In two places this is intentional and suppressed with `// eslint-disable-next-line @next/next/no-img-element`: (1) the attachment preview thumbnail in `MessageInput` uses a `URL.createObjectURL` blob URL which Next.js `<Image>` cannot optimize, and (2) inbound image messages in `MessageBubble` proxy through `/api/media/[id]` which is also not an optimizable static path. Do not add more `<img>` tags without this suppression or the production build will fail.
 
 ### Role-based access
 `session.user.role` is `"ADMIN"` or `"AGENT"`.

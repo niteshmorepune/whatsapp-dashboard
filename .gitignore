@@ -36,5 +36,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# claude code
-.claude/
+# claude code — ignore personal overrides, commit project-wide settings
+.claude/settings.local.json
