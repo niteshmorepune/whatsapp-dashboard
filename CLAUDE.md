@@ -68,7 +68,9 @@ JWT (session strategy) carries `id` and `role` fields — the type augmentation 
 ### Real-time (Server-Sent Events)
 Real-time uses the browser's native `EventSource` API. There is no third-party broker.
 
-- **`src/lib/sse.ts`** — server-side connection store (`Map<agentId, Set<controller>>`) and `broadcastToAll(event, data)`. Every API route that mutates state calls `broadcastToAll` directly after writing to the DB; there is no queue or background job involved.
+- **`src/lib/sse.ts`** — server-side connection store (`Map<agentId, Set<controller>>`). Two broadcast functions:
+  - `broadcastToAll(event, data)` — sends to every connected agent
+  - `sendToAgent(agentId, event, data)` — sends to one specific agent's connections only (used for assignment notifications)
 - **`src/app/api/sse/route.ts`** — authenticated `GET` endpoint (protected by middleware). Exports `dynamic = "force-dynamic"`. Sends a comment-line heartbeat every 25 s to prevent proxy idle-timeouts.
 - **`src/hooks/useSSE.ts`** — `useSSE(handlers)` hook. Opens one `EventSource` per component mount; handlers are stabilised through a ref so callers can pass inline objects. `ConversationList` and `ThreadView` each call `useSSE` independently; `ThreadView` filters `new-message` and `message-status` by `conversationId` in the payload.
 
@@ -76,8 +78,17 @@ Named events and their payloads:
 - `new-message` → `{ conversationId, message, conversation }`
 - `message-status` → `{ conversationId, messageId, status }`
 - `conversation-updated` → `{ conversation }`
+- `conversation-assigned` → `{ conversation, assignedBy }` — sent via `sendToAgent` to the assigned agent only; triggers browser notification + sound ping in `ConversationList`
 
 The TypeScript interfaces for these events in `src/types/index.ts` are named `PusherNewMessageEvent`, `PusherMessageStatusEvent`, `PusherConversationUpdatedEvent` — a legacy name from an earlier Pusher integration. They describe SSE payloads, not Pusher channels. Note: these interfaces are incomplete — the actual broadcast payloads include `conversationId` for `new-message` and `message-status` events, which the interfaces omit. Do not rely on them to infer the full payload shape.
+
+### Agent notifications (ConversationList)
+`ConversationList` fires three notification types when an inbound message arrives on a non-selected conversation:
+1. **Sound** — `playNotificationSound()` using Web Audio API (880→440 Hz sine wave, 0.3 s)
+2. **Browser popup** — `window.Notification` with `tag: conversation.id` for dedup; permission requested on mount
+3. **Tab title badge** — `(N) WhatsApp Business Dashboard` derived from `unreadCounts` state
+
+Notifications only trigger for `message.direction === "INBOUND"` — outbound messages sent by the agent do not fire. `conversation-assigned` events also trigger sound + browser popup (targeted to the assigned agent via `sendToAgent`).
 
 ### 24-hour messaging window
 `Conversation.windowExpiresAt` is set to `now + 24h` whenever an inbound message arrives (in `api/webhook`). The send API (`api/send`) checks `isWindowExpired(windowExpiresAt)` from `src/lib/utils.ts` before allowing free-form messages. Only template messages bypass the expiry check — all other types (text, image, document, audio, video) are blocked when the window is expired. The `WindowBanner` component shows a live countdown when under 2 hours remain and blocks the input when expired, auto-opening the template picker. The picker is dismissible — closing it does not re-enable the input; it can be reopened via the template icon button.
@@ -106,6 +117,34 @@ Outbound media flow: browser uploads file → `/api/media/upload` returns `media
 
 `Message.mediaUrl` stores the Meta media ID for both inbound (set by webhook) and outbound (set by send route) messages. `MessageBubble` renders images inline, audio/video as native players, and documents as a download link using `/api/media/{mediaUrl}`.
 
+### Quick Replies
+Pre-saved canned responses insertable into the message box with one click.
+
+- **Model** — `QuickReply { id, name, content, createdAt, updatedAt }`
+- **API** — `GET/POST /api/quick-replies` (POST is ADMIN only), `PATCH/DELETE /api/quick-replies/[id]` (ADMIN only)
+- **UI** — `/quick-replies` management page (Admins create/edit/delete). In `MessageInput`, the ⚡ (Zap) button opens a dropdown listing all quick replies; clicking one appends its content to the textarea without sending.
+- All agents can read and use quick replies; only Admins can manage them.
+
+### Contact Notes
+Internal notes on a contact, visible to all agents.
+
+- **Model** — `ContactNote { id, contactId, agentId, content, createdAt }` — `agentId` references the author
+- **API** — `GET/POST /api/contacts/[id]/notes`, `DELETE /api/contacts/[id]/notes/[noteId]`
+- **UI** — "Internal Notes" section in the `ContactDetail` panel. Any agent can add notes; only the author or an ADMIN can delete.
+- Notes are loaded alongside conversation history when a contact is opened.
+
+### Broadcasts
+Bulk template message sends to multiple contacts.
+
+- **Models** — `Broadcast { id, name, templateId, agentId, status: DRAFT|SENDING|COMPLETED|FAILED, sentCount, failedCount }` and `BroadcastRecipient { id, broadcastId, contactId, status: PENDING|SENT|FAILED, metaMessageId }`
+- **API**:
+  - `GET/POST /api/broadcasts` — list all or create a new draft (pass `templateId` + `contactIds[]`)
+  - `GET/DELETE /api/broadcasts/[id]` — detail or delete (DELETE is ADMIN only)
+  - `POST /api/broadcasts/[id]/send` — starts the send; returns immediately, processes in background at 1 msg/sec. Contacts with `optedOut: true` are automatically skipped (marked FAILED). Broadcast status transitions: `DRAFT → SENDING → COMPLETED`.
+- **UI** — `/broadcasts` page. Two-step creation modal: (1) pick approved template, (2) filter contacts by tag + select recipients. Send button on draft cards triggers the send route.
+- Only approved templates (`isApproved: true`) appear in the broadcast template picker — the filtering happens client-side.
+- The 1 message/second rate is a conservative limit to stay well within Meta's API constraints. For large lists this means sending is slow but reliable.
+
 ### API routes
 
 All routes return `{ error: string }` with an appropriate HTTP status on failure.
@@ -121,11 +160,14 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 | GET | `/api/contacts/[id]` | Returns contact with all conversations and latest message per conversation |
 | PATCH | `/api/contacts/[id]` | Updates name/email/tags/optedOut |
 | DELETE | `/api/contacts/[id]` | Hard-deletes contact |
+| GET | `/api/contacts/[id]/notes` | Returns notes for a contact, newest first, with agent name |
+| POST | `/api/contacts/[id]/notes` | Creates a note; agentId set from session |
+| DELETE | `/api/contacts/[id]/notes/[noteId]` | Author or ADMIN only |
 | GET | `/api/conversations` | Status filter + search; status `"ALL"` skips the filter |
 | POST | `/api/conversations` | Creates conversation for an existing contact |
 | GET | `/api/conversations/[id]` | Single conversation with contact and assigned agent |
 | PATCH | `/api/conversations/[id]` | Updates status and/or agentId; broadcasts `conversation-updated` SSE |
-| POST | `/api/conversations/[id]/assign` | Assigns or unassigns agent (agentId null = unassign); broadcasts SSE |
+| POST | `/api/conversations/[id]/assign` | Assigns or unassigns agent; broadcasts `conversation-updated` to all + `conversation-assigned` to the assigned agent only |
 | GET | `/api/conversations/[id]/messages` | Cursor-based pagination (limit 50); pass `cursor` (messageId) for older pages |
 | POST | `/api/send` | Sends text, template, image, document, audio, or video; only templates bypass window expiry |
 | GET | `/api/media/[id]` | Proxies Meta media file to browser; supports `?download=1&filename=` |
@@ -134,6 +176,15 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 | POST | `/api/templates` | Creates template with `isApproved: false` |
 | PATCH | `/api/templates/[id]` | Updates template; `isApproved` field restricted to ADMIN |
 | DELETE | `/api/templates/[id]` | ADMIN only |
+| GET | `/api/quick-replies` | Returns all quick replies ordered by name |
+| POST | `/api/quick-replies` | ADMIN only; creates quick reply |
+| PATCH | `/api/quick-replies/[id]` | ADMIN only |
+| DELETE | `/api/quick-replies/[id]` | ADMIN only |
+| GET | `/api/broadcasts` | Returns all broadcasts with template name, agent name, recipient count |
+| POST | `/api/broadcasts` | Creates broadcast draft with recipients |
+| GET | `/api/broadcasts/[id]` | Detail with full recipient list |
+| DELETE | `/api/broadcasts/[id]` | ADMIN only |
+| POST | `/api/broadcasts/[id]/send` | Starts background send; returns immediately |
 | GET | `/api/profile` | Returns own id/name/email/role |
 | PATCH | `/api/profile` | Updates own profile; email or password change requires `currentPassword` |
 | GET | `/api/analytics` | Computes: conversations today, open count, avg response time (minutes), messages today, 30-day trend, status breakdown, per-agent performance |
@@ -148,6 +199,10 @@ Database is **MySQL**. Key models and their non-obvious fields:
 - `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`
 - `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl` (Meta media ID for both inbound and outbound), `mediaType` (image/document/audio/video/null), `metaMessageId` (unique, used for dedup)
 - `Template` — `isApproved`, `metaTemplateId`, `category`
+- `QuickReply` — `name`, `content`
+- `ContactNote` — `contactId`, `agentId` (author), `content`; cascades on contact delete
+- `Broadcast` — `status: DRAFT | SENDING | COMPLETED | FAILED`, `sentCount`, `failedCount`, `templateId`, `agentId`
+- `BroadcastRecipient` — `status: PENDING | SENT | FAILED`, `metaMessageId`; cascades on broadcast delete
 
 ### Utilities (`src/lib/utils.ts`)
 Beyond `cn()` and `isWindowExpired()`:
@@ -158,6 +213,9 @@ Beyond `cn()` and `isWindowExpired()`:
 - `getInitials()` — two-letter initials for avatars
 - `getWindowTimeLeft()` — returns ms remaining until window expiry
 - `truncate()` — ellipsis truncation
+
+### Dashboard layout scroll behaviour
+The dashboard `layout.tsx` sets `overflow-hidden` on `<main>` — required so the Inbox page can manage its own split-pane scroll internally. Pages that need full-page scrolling (Help, Broadcasts, Quick Replies, Contacts, Analytics) must wrap their content in `<div className="h-full overflow-y-auto">` themselves.
 
 ### Public (unauthenticated) pages
 `/privacy`, `/terms`, and `/data-deletion` are excluded from the NextAuth middleware matcher so Meta's crawlers and users can access them without logging in. Any new public page must be added to the exclusion pattern in `src/middleware.ts`.
@@ -181,6 +239,14 @@ git pull
 docker compose up -d --build
 ```
 
+**After schema changes (new migrations):**
+```bash
+cd /opt/app/whatsapp-dashboard
+git pull
+docker compose exec app npx prisma migrate deploy
+docker compose up -d --build
+```
+
 **First-time setup on a fresh VPS:**
 ```bash
 docker compose up -d
@@ -198,12 +264,16 @@ Any API route that calls `getServerSession` (or reads headers/cookies) but decla
 
 ### ESLint conventions
 - `@next/next/no-img-element` — Next.js flags raw `<img>` tags. In two places this is intentional and suppressed with `// eslint-disable-next-line @next/next/no-img-element`: (1) the attachment preview thumbnail in `MessageInput` uses a `URL.createObjectURL` blob URL which Next.js `<Image>` cannot optimize, and (2) inbound image messages in `MessageBubble` proxy through `/api/media/[id]` which is also not an optimizable static path. Do not add more `<img>` tags without this suppression or the production build will fail.
+- Ternary expressions used as statements (e.g. `condition ? a() : b()`) are flagged by `@typescript-eslint/no-unused-expressions`. Use `if/else` instead.
 
 ### Role-based access
 `session.user.role` is `"ADMIN"` or `"AGENT"`.
 - `/agents` page redirects non-admins client-side. `PATCH /api/agents/[id]` (edit name, email, password, role, isActive) is server-enforced to `ADMIN` only.
 - `/profile` is accessible to any authenticated user and edits only their own record (`PATCH /api/profile`). Email or password changes require the current password.
 - Template approval (`PATCH /api/templates/[id]` with `isApproved`) is server-enforced to `ADMIN` only.
+- Quick reply management (POST/PATCH/DELETE `/api/quick-replies`) is server-enforced to `ADMIN` only. All agents can read and use them.
+- Broadcast delete (`DELETE /api/broadcasts/[id]`) is ADMIN only. Any agent can create and send broadcasts.
+- Contact note delete is restricted to the note author or ADMIN.
 - `GET /api/agents` is ADMIN-only. The `AssignAgent` component in the thread header calls this endpoint; non-admin users will see a permanently empty dropdown because the request fails silently. If agents need to reassign conversations, the GET endpoint's role restriction would need to be relaxed.
 
 ### Styling
