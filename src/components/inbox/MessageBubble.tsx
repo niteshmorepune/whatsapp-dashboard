@@ -1,6 +1,6 @@
 import { Message } from "@/types";
 import { format } from "date-fns";
-import { Check, CheckCheck, Clock, XCircle, Image as ImageIcon, FileText, Headphones, Video, Download } from "lucide-react";
+import { Check, CheckCheck, Clock, XCircle, FileText, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MessageBubbleProps {
@@ -19,16 +19,6 @@ function StatusTick({ status }: { status: Message["status"] }) {
       return <XCircle className="w-3 h-3 text-red-400" />;
     default:
       return <Clock className="w-3 h-3 text-gray-500" />;
-  }
-}
-
-function MediaIcon({ type }: { type: string | null }) {
-  switch (type) {
-    case "image": return <ImageIcon className="w-4 h-4" />;
-    case "document": return <FileText className="w-4 h-4" />;
-    case "audio": return <Headphones className="w-4 h-4" />;
-    case "video": return <Video className="w-4 h-4" />;
-    default: return null;
   }
 }
 
@@ -54,6 +44,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {message.mediaType && message.mediaUrl && (
           <div className="mb-2">
             {message.mediaType === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={`/api/media/${message.mediaUrl}`}
                 alt="image"
@@ -83,7 +74,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Text / caption — hide if it's a doc filename shown inside the download link */}
+        {/* Text / caption — hide if it's a doc filename already shown inside the download link */}
         {(message.content && message.mediaType !== "document") || !message.mediaType ? (
           <p className="text-sm text-white leading-relaxed whitespace-pre-wrap break-words">
             {message.content}

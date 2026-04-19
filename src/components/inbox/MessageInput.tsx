@@ -203,6 +203,7 @@ export function MessageInput({
         {attachment && (
           <div className="flex items-center gap-3 mb-2 p-2 bg-gray-800 rounded-lg border border-gray-700">
             {attachment.preview ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={attachment.preview} alt="preview" className="w-10 h-10 object-cover rounded flex-shrink-0" />
             ) : (
               <div className="w-10 h-10 bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
