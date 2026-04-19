@@ -1,6 +1,6 @@
 import { Message } from "@/types";
 import { format } from "date-fns";
-import { Check, CheckCheck, Clock, XCircle, Image as ImageIcon, FileText, Headphones, Video } from "lucide-react";
+import { Check, CheckCheck, Clock, XCircle, Image as ImageIcon, FileText, Headphones, Video, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MessageBubbleProps {
@@ -50,17 +50,45 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : "bg-gray-800 rounded-tl-sm"
         )}
       >
-        {/* Media indicator */}
-        {message.mediaType && (
-          <div className="flex items-center gap-1.5 mb-1 opacity-75">
-            <MediaIcon type={message.mediaType} />
-            <span className="text-xs capitalize">{message.mediaType}</span>
+        {/* Media content */}
+        {message.mediaType && message.mediaUrl && (
+          <div className="mb-2">
+            {message.mediaType === "image" ? (
+              <img
+                src={`/api/media/${message.mediaUrl}`}
+                alt="image"
+                className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer"
+                onClick={() => window.open(`/api/media/${message.mediaUrl}`, "_blank")}
+              />
+            ) : message.mediaType === "audio" ? (
+              <audio controls src={`/api/media/${message.mediaUrl}`} className="w-full max-w-xs" />
+            ) : message.mediaType === "video" ? (
+              <video
+                controls
+                src={`/api/media/${message.mediaUrl}`}
+                className="rounded-lg max-w-full max-h-48"
+              />
+            ) : (
+              <a
+                href={`/api/media/${message.mediaUrl}?download=1&filename=${encodeURIComponent(message.content || "file")}`}
+                download={message.content || "file"}
+                className="flex items-center gap-2 bg-black/20 hover:bg-black/30 rounded-lg px-3 py-2 transition"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <FileText className="w-4 h-4 flex-shrink-0" />
+                <span className="text-xs truncate flex-1">{message.content || "Document"}</span>
+                <Download className="w-3 h-3 flex-shrink-0" />
+              </a>
+            )}
           </div>
         )}
 
-        <p className="text-sm text-white leading-relaxed whitespace-pre-wrap break-words">
-          {message.content}
-        </p>
+        {/* Text / caption — hide if it's a doc filename shown inside the download link */}
+        {(message.content && message.mediaType !== "document") || !message.mediaType ? (
+          <p className="text-sm text-white leading-relaxed whitespace-pre-wrap break-words">
+            {message.content}
+          </p>
+        ) : null}
 
         <div
           className={cn(

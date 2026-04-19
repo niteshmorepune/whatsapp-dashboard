@@ -47,6 +47,28 @@ export async function sendTemplateMessage(
   return { messageId: response.data.messages?.[0]?.id };
 }
 
+export async function sendMediaMessage(
+  to: string,
+  mediaType: "image" | "document" | "audio" | "video",
+  mediaId: string,
+  caption?: string,
+  filename?: string
+): Promise<{ messageId: string }> {
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+  const mediaPayload: Record<string, unknown> = { id: mediaId };
+  if (caption) mediaPayload.caption = caption;
+  if (filename && mediaType === "document") mediaPayload.filename = filename;
+
+  const response = await metaClient.post(`/${phoneNumberId}/messages`, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: mediaType,
+    [mediaType]: mediaPayload,
+  });
+  return { messageId: response.data.messages?.[0]?.id };
+}
+
 export async function markMessageRead(messageId: string): Promise<void> {
   const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
   await metaClient.post(`/${phoneNumberId}/messages`, {

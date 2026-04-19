@@ -2,12 +2,34 @@
 
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import { Send, Smile, FileText, Loader2 } from "lucide-react";
+import { Send, Smile, FileText, Loader2, Paperclip, X, Image as ImageIcon, Headphones, Video } from "lucide-react";
 import { Template } from "@/types";
 import { Modal } from "@/components/ui/Modal";
 import { isWindowExpired } from "@/lib/utils";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
+
+type MediaType = "image" | "document" | "audio" | "video";
+
+interface Attachment {
+  file: File;
+  preview: string | null;
+  mediaType: MediaType;
+}
+
+function detectMediaType(file: File): MediaType {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("video/")) return "video";
+  return "document";
+}
+
+function AttachmentIcon({ type }: { type: MediaType }) {
+  if (type === "image") return <ImageIcon className="w-5 h-5 text-gray-400" />;
+  if (type === "audio") return <Headphones className="w-5 h-5 text-gray-400" />;
+  if (type === "video") return <Video className="w-5 h-5 text-gray-400" />;
+  return <FileText className="w-5 h-5 text-gray-400" />;
+}
 
 const EmojiPicker = dynamic(
   () => import("@emoji-mart/react").then((mod) => mod.default),
@@ -30,8 +52,17 @@ export function MessageInput({
   const [showEmoji, setShowEmoji] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const windowExpired = isWindowExpired(windowExpiresAt);
+
+  // Clean up object URL on attachment change
+  useEffect(() => {
+    return () => {
+      if (attachment?.preview) URL.revokeObjectURL(attachment.preview);
+    };
+  }, [attachment]);
 
   useEffect(() => {
     if (showTemplates && templates.length === 0) {
@@ -52,7 +83,50 @@ export function MessageInput({
     }
   }, [windowExpired]);
 
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const mediaType = detectMediaType(file);
+    const preview = mediaType === "image" ? URL.createObjectURL(file) : null;
+    setAttachment({ file, preview, mediaType });
+    e.target.value = "";
+  }
+
+  async function sendWithAttachment() {
+    if (!attachment || sending) return;
+    setSending(true);
+    try {
+      const form = new FormData();
+      form.append("file", attachment.file);
+      const uploadRes = await axios.post("/api/media/upload", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const { mediaId } = uploadRes.data;
+
+      await axios.post("/api/send", {
+        conversationId,
+        content: text.trim() || attachment.file.name,
+        type: attachment.mediaType,
+        mediaId,
+        filename: attachment.file.name,
+      });
+
+      setText("");
+      setAttachment(null);
+      onMessageSent();
+      toast.success("Attachment sent");
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err)
+        ? err.response?.data?.error ?? "Failed to send"
+        : "Failed to send";
+      toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function sendText() {
+    if (attachment) return sendWithAttachment();
     if (!text.trim() || sending) return;
     if (windowExpired) {
       toast.error("Window expired. Please use a template.");
@@ -125,6 +199,37 @@ export function MessageInput({
           </p>
         )}
 
+        {/* Attachment preview */}
+        {attachment && (
+          <div className="flex items-center gap-3 mb-2 p-2 bg-gray-800 rounded-lg border border-gray-700">
+            {attachment.preview ? (
+              <img src={attachment.preview} alt="preview" className="w-10 h-10 object-cover rounded flex-shrink-0" />
+            ) : (
+              <div className="w-10 h-10 bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
+                <AttachmentIcon type={attachment.mediaType} />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-white truncate">{attachment.file.name}</p>
+              <p className="text-xs text-gray-500 capitalize">{attachment.mediaType} · {(attachment.file.size / 1024).toFixed(0)} KB</p>
+            </div>
+            <button
+              onClick={() => setAttachment(null)}
+              className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+          onChange={handleFileSelect}
+        />
+
         <div className="flex items-end gap-2">
           <div className="flex-1 relative">
             <textarea
@@ -153,6 +258,15 @@ export function MessageInput({
           </div>
 
           <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={windowExpired || sending}
+            title="Send attachment"
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition disabled:opacity-40"
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+
+          <button
             onClick={() => setShowEmoji(!showEmoji)}
             disabled={windowExpired || sending}
             className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition disabled:opacity-40"
@@ -171,7 +285,7 @@ export function MessageInput({
 
           <button
             onClick={sendText}
-            disabled={!text.trim() || windowExpired || sending}
+            disabled={(!text.trim() && !attachment) || windowExpired || sending}
             className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white transition"
           >
             {sending ? (

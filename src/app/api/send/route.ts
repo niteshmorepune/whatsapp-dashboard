@@ -3,7 +3,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAll } from "@/lib/sse";
-import { sendTextMessage, sendTemplateMessage } from "@/lib/meta";
+import { sendTextMessage, sendTemplateMessage, sendMediaMessage } from "@/lib/meta";
+
+const MEDIA_TYPES = ["image", "document", "audio", "video"] as const;
+type MediaType = (typeof MEDIA_TYPES)[number];
 import { isWindowExpired } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
@@ -12,9 +15,12 @@ export async function POST(request: NextRequest) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { conversationId, content, type = "text", templateId } = body;
+    const { conversationId, content, type = "text", templateId, mediaId, filename } = body;
 
-    if (!conversationId || !content) {
+    if (!conversationId) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    if (!content && !mediaId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -29,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     const windowExpired = isWindowExpired(conversation.windowExpiresAt);
 
-    if (type === "text" && windowExpired) {
+    if (type !== "template" && windowExpired) {
       return NextResponse.json(
         { error: "24-hour window has expired. Please use a template." },
         { status: 403 }
@@ -48,6 +54,12 @@ export async function POST(request: NextRequest) {
       }
       const result = await sendTemplateMessage(phone, template.name);
       metaMessageId = result.messageId ?? null;
+    } else if (MEDIA_TYPES.includes(type as MediaType)) {
+      if (!mediaId) {
+        return NextResponse.json({ error: "mediaId required for media messages" }, { status: 400 });
+      }
+      const result = await sendMediaMessage(phone, type as MediaType, mediaId, content || undefined, filename);
+      metaMessageId = result.messageId ?? null;
     } else {
       const result = await sendTextMessage(phone, content);
       metaMessageId = result.messageId ?? null;
@@ -58,8 +70,10 @@ export async function POST(request: NextRequest) {
       data: {
         conversationId,
         direction: "OUTBOUND",
-        content,
+        content: content ?? "",
         metaMessageId,
+        mediaUrl: MEDIA_TYPES.includes(type as MediaType) ? (mediaId ?? null) : null,
+        mediaType: MEDIA_TYPES.includes(type as MediaType) ? type : null,
         status: "SENT",
         sentByAgentId: session.user.id,
       },
