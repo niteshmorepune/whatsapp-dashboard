@@ -147,14 +147,13 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 bg-gray-900 border-b border-gray-800 flex flex-wrap items-center gap-x-3 gap-y-2 flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <Avatar name={displayName} size="md" />
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-white truncate">{displayName}</h2>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Phone className="w-3 h-3 text-gray-500" />
-              <span className="text-xs text-gray-400">{formatPhone(contact.phone)}</span>
+      <div className="px-3 py-2.5 bg-gray-900 border-b border-gray-800 flex items-center gap-2 flex-shrink-0">
+        {/* Contact info */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <Avatar name={displayName} size="md" className="flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="text-sm font-semibold text-white truncate">{displayName}</h2>
               <Badge
                 variant={
                   conversation.status === "OPEN"
@@ -167,10 +166,15 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
                 {conversation.status}
               </Badge>
             </div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <Phone className="w-3 h-3 text-gray-500 flex-shrink-0" />
+              <span className="text-xs text-gray-400 whitespace-nowrap">{formatPhone(contact.phone)}</span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Actions */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <AssignAgent
             conversation={conversation}
             onAssigned={setConversation}
@@ -179,7 +183,7 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
             onClick={handleResolve}
             disabled={resolving}
             title={conversation.status === "RESOLVED" ? "Reopen" : "Resolve"}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex-shrink-0 ${
               conversation.status === "RESOLVED"
                 ? "bg-gray-700 hover:bg-gray-600 text-gray-300"
                 : "bg-green-600 hover:bg-green-700 text-white"

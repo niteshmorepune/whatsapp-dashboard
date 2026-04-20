@@ -42,13 +42,13 @@ export function AssignAgent({ conversation, onAssigned }: AssignAgentProps) {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <UserPlus className="w-4 h-4 text-gray-400 flex-shrink-0" />
+    <div className="flex items-center gap-1.5">
+      <UserPlus className="w-4 h-4 text-gray-400 flex-shrink-0 hidden sm:block" />
       <select
         value={conversation.agentId ?? ""}
         onChange={(e) => handleAssign(e.target.value || null)}
         disabled={loading}
-        className="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-50"
+        className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-50 max-w-[110px] sm:max-w-none sm:text-sm"
       >
         <option value="">Unassigned</option>
         {agents.map((agent) => (
