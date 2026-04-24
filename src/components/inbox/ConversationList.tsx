@@ -20,7 +20,7 @@ const TABS: { label: string; value: ConversationStatus | "ALL" }[] = [
   { label: "Resolved", value: "RESOLVED" },
 ];
 
-const BASE_TITLE = "WhatsApp Business Dashboard";
+const BASE_TITLE = "WaDesk";
 
 // Plays a short descending sine-wave ping via Web Audio API.
 // Creates a fresh context each time and closes it when the note ends.

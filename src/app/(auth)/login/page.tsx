@@ -39,7 +39,7 @@ export default function LoginPage() {
           <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mb-4">
             <MessageSquare className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">WhatsApp Dashboard</h1>
+          <h1 className="text-2xl font-bold text-white">WaDesk</h1>
           <p className="text-gray-400 mt-1">Sign in to your support account</p>
         </div>
 

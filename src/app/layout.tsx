@@ -6,8 +6,8 @@ import { SessionProvider } from "@/components/SessionProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "WhatsApp Business Dashboard",
-  description: "WhatsApp Business Support Dashboard",
+  title: "WaDesk",
+  description: "Customer Support Dashboard",
 };
 
 export default function RootLayout({
