@@ -67,6 +67,7 @@ async function handleInboundMessage(
     document?: { id: string; mime_type: string; filename?: string };
     audio?: { id: string; mime_type: string };
     video?: { id: string; mime_type: string };
+    errors?: { title?: string; message?: string }[];
   },
   contactInfo?: { profile?: { name?: string } }
 ) {
@@ -76,6 +77,8 @@ async function handleInboundMessage(
     msg.text?.body ||
     msg.image?.caption ||
     msg.document?.filename ||
+    msg.errors?.[0]?.title ||
+    msg.errors?.[0]?.message ||
     `[${msg.type}]`;
 
   let mediaUrl: string | null = null;
