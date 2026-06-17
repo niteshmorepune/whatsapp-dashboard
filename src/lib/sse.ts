@@ -57,6 +57,13 @@ export function sendToAgent(agentId: string, event: string, data: unknown): void
 }
 
 /**
+ * Returns the IDs of agents with at least one active SSE connection.
+ */
+export function getConnectedAgentIds(): string[] {
+  return Array.from(connections.keys());
+}
+
+/**
  * Broadcast an event to every connected agent.
  * Dead controllers are pruned on write failure.
  */

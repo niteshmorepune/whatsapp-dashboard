@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { broadcastToAll } from "@/lib/sse";
+import { broadcastToAll, getConnectedAgentIds } from "@/lib/sse";
+import { sendPushToAgents } from "@/lib/webpush";
 
 // GET: Meta webhook verification
 export async function GET(request: NextRequest) {
@@ -178,6 +179,24 @@ async function handleInboundMessage(
   broadcastToAll("conversation-updated", {
     conversation: fullConversation,
   });
+
+  // Push notification to agents who are NOT currently connected via SSE
+  const connectedIds = new Set(getConnectedAgentIds());
+  const allAgents = await prisma.agent.findMany({
+    where: { isActive: true },
+    select: { id: true },
+  });
+  const offlineAgentIds = allAgents.map((a) => a.id).filter((id) => !connectedIds.has(id));
+  if (offlineAgentIds.length > 0) {
+    const senderName = contact.name || `+${phone}`;
+    const preview = content.length > 100 ? content.slice(0, 100) + "…" : content;
+    await sendPushToAgents(offlineAgentIds, {
+      title: `New message from ${senderName}`,
+      body: preview,
+      conversationId: conversation.id,
+      url: "/inbox",
+    });
+  }
 }
 
 async function handleStatusUpdate(status: {
