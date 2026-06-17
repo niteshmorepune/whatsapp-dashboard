@@ -143,6 +143,11 @@ async function handleInboundMessage(
     });
   }
 
+  // Skip non-meaningful message types (reactions, unsupported, system events)
+  if (msg.type === "unsupported" || msg.type === "reaction" || msg.type === "system") {
+    return;
+  }
+
   // Save message (skip duplicates)
   const existing = await prisma.message.findUnique({
     where: { metaMessageId },
