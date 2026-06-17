@@ -1,12 +1,6 @@
 import webpush from "web-push";
 import { prisma } from "./prisma";
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
-
 export interface PushPayload {
   title: string;
   body: string;
@@ -19,6 +13,13 @@ export async function sendPushToAgents(
   payload: PushPayload
 ): Promise<void> {
   if (agentIds.length === 0) return;
+  if (!process.env.VAPID_SUBJECT || !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
 
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { agentId: { in: agentIds } },
