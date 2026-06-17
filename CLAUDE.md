@@ -86,7 +86,7 @@ The TypeScript interfaces for these events in `src/types/index.ts` are named `Pu
 `ConversationList` fires three notification types when an inbound message arrives on a non-selected conversation:
 1. **Sound** — `playNotificationSound()` using Web Audio API (880→440 Hz sine wave, 0.3 s)
 2. **Browser popup** — `window.Notification` with `tag: conversation.id` for dedup; permission requested on mount
-3. **Tab title badge** — `(N) WhatsApp Business Dashboard` derived from `unreadCounts` state
+3. **Tab title badge** — `(N) WaDesk` derived from `unreadCounts` state
 
 Notifications only trigger for `message.direction === "INBOUND"` — outbound messages sent by the agent do not fire. `conversation-assigned` events also trigger sound + browser popup (targeted to the assigned agent via `sendToAgent`).
 
@@ -255,6 +255,13 @@ docker compose exec app npm run db:seed
 ```
 
 The `.env` file at `/opt/app/whatsapp-dashboard/.env` is the single env file for Docker — it is read both by the compose environment substitution and by Prisma CLI inside the container. `DATABASE_URL` must use `db` (the compose service name) as the hostname, not `localhost`.
+
+**Periodic disk cleanup:** Each `docker compose up -d --build` leaves the previous image layers in Docker's build cache, which grows unbounded across deploys and can fill the VPS disk (seen at 81% usage with 21GB+ reclaimable build cache before being cleaned up). Run this periodically (e.g. monthly, or after a deploy) — it only removes unused build cache and dangling images, not running containers, volumes, or the n8n/Traefik stack:
+```bash
+docker builder prune -f
+docker image prune -f
+df -h /
+```
 
 ### No test suite
 There are no unit or integration tests. Type-checking (`npx tsc --noEmit`) and the production build (`npm run build`) are the main correctness checks. **The production build runs ESLint as an error** — always run `npm run lint` locally before pushing.
