@@ -122,6 +122,8 @@ async function handleInboundMessage(
   });
 
   const windowExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const isNewConversation = !conversation;
+  const isReopened = !!conversation && conversation.status === "RESOLVED";
 
   if (!conversation) {
     conversation = await prisma.conversation.create({
@@ -141,6 +143,23 @@ async function handleInboundMessage(
         status: conversation.status === "RESOLVED" ? "OPEN" : conversation.status,
       },
     });
+  }
+
+  // Notify CRM on new or reopened conversations so it can create a support ticket.
+  if ((isNewConversation || isReopened) && process.env.CRM_WEBHOOK_URL && process.env.CRM_WEBHOOK_TOKEN) {
+    fetch(process.env.CRM_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRM_WEBHOOK_TOKEN}`,
+      },
+      body: JSON.stringify({
+        phone,
+        contact_name: contactInfo?.profile?.name ?? null,
+        message: content,
+        conversation_id: conversation.id,
+      }),
+    }).catch(() => {}); // fire-and-forget — never block the Meta webhook response
   }
 
   // Skip non-meaningful message types (reactions, unsupported, system events)
