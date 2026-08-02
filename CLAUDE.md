@@ -44,6 +44,7 @@ META_ACCESS_TOKEN=
 META_PHONE_NUMBER_ID=
 META_WABA_ID=
 META_WEBHOOK_VERIFY_TOKEN=
+WADESK_SERVICE_KEY=
 ```
 
 The seed script uses `-r dotenv/config` so `ts-node` loads `.env` before `PrismaClient` initialises — without this flag the seed will fail with "Environment variable not found: DATABASE_URL". The seed also requires `tsconfig.seed.json` (CommonJS module mode for ts-node compatibility).
@@ -64,6 +65,8 @@ Default seed credentials: `admin@youragency.com` / `Admin@1234`.
 `src/middleware.ts` uses `next-auth/middleware` to block all routes except `/login`, `/api/auth/**`, `/api/webhook`, and Next.js static assets. `/api/sse` is **not** excluded and is therefore also protected. The dashboard layout additionally calls `useSession()` client-side and redirects if unauthenticated.
 
 JWT (session strategy) carries `id` and `role` fields — the type augmentation lives in `src/types/index.ts`. Login rejects agents with `isActive: false`. After a profile update (`PATCH /api/profile`), call `updateSession()` from `useSession()` to sync the client-side session; the JWT cookie is not re-issued until the next sign-in, so `session.user.name`/`email` will reflect the old value server-side until then.
+
+**`POST /api/send` has a second, non-session auth path**: an `X-Service-Key` header matching `WADESK_SERVICE_KEY` is accepted in place of a browser session — this is the CRM's Tier 3 integration (staff replies to a WhatsApp ticket in the CRM → forwarded here server-to-server, no NEDS CRM agent has a wadesk.in login). `middleware.ts`'s matcher excludes `api/send` for exactly this reason — without that exclusion, NextAuth's middleware would redirect/401 the request before the route handler's own `X-Service-Key` check ever runs. A CRM-originated send skips the per-agent line-access check (no agent identity to check — the CRM is trusted via the shared secret, same trust model the rest of this check-in the route otherwise wouldn't skip) and records `sentByAgentId: null` on the resulting `Message`. **This existed only as an uncommitted hotfix directly on the VPS for over a month before being merged back into git** (discovered 2026-08-02 when a `git pull` for the multi-number rollout conflicted with it) — if a future `git pull` on the VPS ever conflicts again, treat it as a signal a live hotfix was made and never committed, not as something safe to discard.
 
 ### Real-time (Server-Sent Events)
 Real-time uses the browser's native `EventSource` API. There is no third-party broker.

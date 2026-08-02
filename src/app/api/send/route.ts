@@ -12,8 +12,21 @@ import { isWindowExpired } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // CRM server-to-server auth via X-Service-Key (Tier 3: staff replies to a
+    // WhatsApp ticket in the CRM, forwarded here with no browser session).
+    // Trusted via the shared secret in place of a human agent identity — so
+    // it skips both getServerSession and the per-agent line-access check
+    // below (there's no agent to check access for; the CRM speaks for
+    // itself). middleware.ts excludes /api/send from NextAuth's route
+    // matcher so this request path reaches the handler at all.
+    const serviceKey = request.headers.get("X-Service-Key");
+    const isCrmRequest = Boolean(serviceKey && serviceKey === process.env.WADESK_SERVICE_KEY);
+
+    let session = null;
+    if (!isCrmRequest) {
+      session = await getServerSession(authOptions);
+      if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await request.json();
     const { conversationId, content, type = "text", templateId, mediaId, filename } = body;
@@ -34,13 +47,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    const allowed = await agentHasAccessToNumber(
-      session.user.id,
-      session.user.role,
-      conversation.whatsappNumberId
-    );
-    if (!allowed) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!isCrmRequest) {
+      const allowed = await agentHasAccessToNumber(
+        session!.user.id,
+        session!.user.role,
+        conversation.whatsappNumberId
+      );
+      if (!allowed) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
 
     const metaConfig = toMetaConfig(conversation.whatsappNumber);
@@ -86,7 +101,7 @@ export async function POST(request: NextRequest) {
         mediaUrl: MEDIA_TYPES.includes(type as MediaType) ? (mediaId ?? null) : null,
         mediaType: MEDIA_TYPES.includes(type as MediaType) ? type : null,
         status: "SENT",
-        sentByAgentId: session.user.id,
+        sentByAgentId: isCrmRequest ? null : session!.user.id,
       },
       include: { sentByAgent: true },
     });
