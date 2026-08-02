@@ -14,6 +14,7 @@ import {
   Users,
   Bell,
   CheckCircle2,
+  Phone,
 } from "lucide-react";
 
 interface Section {
@@ -71,8 +72,9 @@ const SECTIONS: Section[] = [
           <Step n={3} text="The same template must also be approved in Meta Business Manager (your WhatsApp account portal). The template name must match exactly. Meta review usually takes a few minutes to a few hours." />
           <Step n={4} text="Make sure the contacts you want to message are saved under Contacts with their correct phone numbers." />
           <Step n={5} text="Go to Broadcasts → click New Broadcast → select the approved template." />
-          <Step n={6} text="Filter recipients by tag (e.g. 'vip', 'customer') or manually select individual contacts. Click Create Broadcast — this saves it as a Draft, nothing is sent yet." />
-          <Step n={7} text="From the Broadcasts list, click Send on the draft. Messages go out one per second in the background. The status will show Sending → Completed with sent and failed counts." />
+          <Step n={6} text="Pick which line to send from (e.g. Support or Marketing) — only lines you have access to are offered. This decides which WhatsApp number the broadcast goes out on." />
+          <Step n={7} text="Filter recipients by tag (e.g. 'vip', 'customer') or manually select individual contacts. Click Create Broadcast — this saves it as a Draft, nothing is sent yet." />
+          <Step n={8} text="From the Broadcasts list, click Send on the draft. Messages go out one per second in the background. The status will show Sending → Completed with sent and failed counts." />
         </div>
         <Note>
           Only template messages can be sent as broadcasts. Free-form text is blocked by WhatsApp for contacts you haven&apos;t spoken to in the last 24 hours.
@@ -263,6 +265,37 @@ const SECTIONS: Section[] = [
           Set your conversation to Pending if you are waiting for something (e.g. waiting for the
           customer to reply) — this keeps it separate from actively open chats.
         </Tip>
+      </div>
+    ),
+  },
+  {
+    id: "lines",
+    icon: <Phone className="w-4 h-4" />,
+    title: "Lines — Multiple WhatsApp numbers",
+    color: "text-teal-400",
+    content: (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-400">
+          This dashboard can run more than one WhatsApp number side by side — e.g. one for
+          post-sale support, one for pre-sale marketing. Every conversation, contact message, and
+          broadcast belongs to exactly one line.
+        </p>
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white">Which lines can you see?</p>
+          <Step n={1} text="Admins always see every line. Agents only see lines an Admin has explicitly granted them, on the Agents page." />
+          <Step n={2} text="If you can see more than one line, the Inbox shows a row of line tabs (All lines / Support / Marketing / ...) above the status tabs. If you only have one line, you won't see this row at all — there's nothing to switch between." />
+          <Step n={3} text="A contact who has messaged two different NEDS numbers gets one conversation per line, never a single merged thread — each line is a fully separate chat with its own history." />
+        </div>
+        <div className="space-y-3 mt-2">
+          <p className="text-sm font-medium text-white">For Admins — managing lines:</p>
+          <Step n={1} text="Numbers page: add a new WhatsApp number (label, the number itself, its Meta Phone Number ID, WABA ID, and access token — all from Meta Business Manager's API Setup screen for that number) or edit an existing one." />
+          <Step n={2} text="Agents page: check which lines each agent can see, per agent, when creating or editing them." />
+        </div>
+        <Note>
+          Adding a number here is only half the setup — that number&apos;s WABA also needs to be
+          subscribed to this app in Meta (a one-time API call your developer runs), or messages on
+          it will never arrive here even though the number is configured correctly.
+        </Note>
       </div>
     ),
   },
