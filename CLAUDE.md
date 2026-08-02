@@ -68,6 +68,8 @@ JWT (session strategy) carries `id` and `role` fields — the type augmentation 
 
 **`POST /api/send` has a second, non-session auth path**: an `X-Service-Key` header matching `WADESK_SERVICE_KEY` is accepted in place of a browser session — this is the CRM's Tier 3 integration (staff replies to a WhatsApp ticket in the CRM → forwarded here server-to-server, no NEDS CRM agent has a wadesk.in login). `middleware.ts`'s matcher excludes `api/send` for exactly this reason — without that exclusion, NextAuth's middleware would redirect/401 the request before the route handler's own `X-Service-Key` check ever runs. A CRM-originated send skips the per-agent line-access check (no agent identity to check — the CRM is trusted via the shared secret, same trust model the rest of this check-in the route otherwise wouldn't skip) and records `sentByAgentId: null` on the resulting `Message`. **This existed only as an uncommitted hotfix directly on the VPS for over a month before being merged back into git** (discovered 2026-08-02 when a `git pull` for the multi-number rollout conflicted with it) — if a future `git pull` on the VPS ever conflicts again, treat it as a signal a live hotfix was made and never committed, not as something safe to discard.
 
+**`POST /api/send-template` (added 2026-08-03, for the CRM's Deal-Won handoff) is service-key ONLY** — no session fallback at all, unlike `/api/send`. It's meant purely for server-to-server calls, never a browser. Same `middleware.ts` matcher-exclusion requirement applies.
+
 ### Real-time (Server-Sent Events)
 Real-time uses the browser's native `EventSource` API. There is no third-party broker.
 
@@ -190,6 +192,7 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 | POST | `/api/conversations/[id]/assign` | Assigns or unassigns agent; same line-access checks as PATCH above; broadcasts `conversation-updated` to agents granted that line + `conversation-assigned` to the assigned agent only |
 | GET | `/api/conversations/[id]/messages` | Cursor-based pagination (limit 50); pass `cursor` (messageId) for older pages; 403 if requester isn't granted the conversation's line |
 | POST | `/api/send` | Sends text, template, image, document, audio, or video; only templates bypass window expiry; 403 if requester isn't granted the conversation's line |
+| POST | `/api/send-template` | Service-key only, no session fallback. `{phone, businessNumber, templateName}` — resolves the line/template by their natural names (not wadesk's internal row IDs), upserts the Contact/Conversation if they don't exist yet, sends. For an external system triggering a business-initiated message to a phone that's never messaged us before (so there's no existing conversation for `/api/send` to attach to) — currently only the CRM's Deal-Won handoff message. Does not touch `windowExpiresAt`. |
 | GET | `/api/media/[id]` | Proxies Meta media file to browser; supports `?download=1&filename=` |
 | POST | `/api/media/upload` | Uploads browser file to Meta, returns `{ mediaId }` |
 | GET | `/api/templates` | Returns all templates; **isApproved filtering happens on the client**, not here |
