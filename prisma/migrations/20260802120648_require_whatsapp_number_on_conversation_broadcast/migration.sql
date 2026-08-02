@@ -6,16 +6,16 @@
 
 */
 -- DropForeignKey
-ALTER TABLE `broadcast` DROP FOREIGN KEY `Broadcast_whatsappNumberId_fkey`;
+ALTER TABLE `Broadcast` DROP FOREIGN KEY `Broadcast_whatsappNumberId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `conversation` DROP FOREIGN KEY `Conversation_whatsappNumberId_fkey`;
+ALTER TABLE `Conversation` DROP FOREIGN KEY `Conversation_whatsappNumberId_fkey`;
 
 -- AlterTable
-ALTER TABLE `broadcast` MODIFY `whatsappNumberId` VARCHAR(191) NOT NULL;
+ALTER TABLE `Broadcast` MODIFY `whatsappNumberId` VARCHAR(191) NOT NULL;
 
 -- AlterTable
-ALTER TABLE `conversation` MODIFY `whatsappNumberId` VARCHAR(191) NOT NULL;
+ALTER TABLE `Conversation` MODIFY `whatsappNumberId` VARCHAR(191) NOT NULL;
 
 -- AddForeignKey
 ALTER TABLE `Conversation` ADD CONSTRAINT `Conversation_whatsappNumberId_fkey` FOREIGN KEY (`whatsappNumberId`) REFERENCES `WhatsappNumber`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

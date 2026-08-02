@@ -1,8 +1,8 @@
 -- AlterTable
-ALTER TABLE `broadcast` ADD COLUMN `whatsappNumberId` VARCHAR(191) NULL;
+ALTER TABLE `Broadcast` ADD COLUMN `whatsappNumberId` VARCHAR(191) NULL;
 
 -- AlterTable
-ALTER TABLE `conversation` ADD COLUMN `whatsappNumberId` VARCHAR(191) NULL;
+ALTER TABLE `Conversation` ADD COLUMN `whatsappNumberId` VARCHAR(191) NULL;
 
 -- CreateTable
 CREATE TABLE `WhatsappNumber` (
