@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { agentHasAccessToNumber, getAgentAccessibleNumberIds } from "@/lib/whatsapp-numbers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +12,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
+    const whatsappNumberId = searchParams.get("whatsappNumberId");
     const page = parseInt(searchParams.get("page") ?? "1");
     const limit = parseInt(searchParams.get("limit") ?? "50");
 
@@ -25,11 +27,24 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Non-admin agents only ever see conversations on lines they've been
+    // granted (AgentWhatsappNumber). Admins see every line, optionally
+    // narrowed to one via ?whatsappNumberId=.
+    if (whatsappNumberId) {
+      const allowed = await agentHasAccessToNumber(session.user.id, session.user.role, whatsappNumberId);
+      if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      where.whatsappNumberId = whatsappNumberId;
+    } else if (session.user.role !== "ADMIN") {
+      const accessibleIds = await getAgentAccessibleNumberIds(session.user.id, session.user.role);
+      where.whatsappNumberId = { in: accessibleIds };
+    }
+
     const conversations = await prisma.conversation.findMany({
       where,
       include: {
         contact: true,
         agent: true,
+        whatsappNumber: { select: { id: true, label: true, businessNumber: true } },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -55,19 +70,23 @@ export async function POST(request: NextRequest) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { contactId } = body;
+    const { contactId, whatsappNumberId } = body;
 
-    if (!contactId) {
-      return NextResponse.json({ error: "contactId is required" }, { status: 400 });
+    if (!contactId || !whatsappNumberId) {
+      return NextResponse.json({ error: "contactId and whatsappNumberId are required" }, { status: 400 });
     }
+
+    const allowed = await agentHasAccessToNumber(session.user.id, session.user.role, whatsappNumberId);
+    if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const conversation = await prisma.conversation.create({
       data: {
         contactId,
+        whatsappNumberId,
         status: "OPEN",
         lastMessageAt: new Date(),
       },
-      include: { contact: true, agent: true },
+      include: { contact: true, agent: true, whatsappNumber: true },
     });
 
     return NextResponse.json(conversation, { status: 201 });

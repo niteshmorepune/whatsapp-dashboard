@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { Plus, Loader2, Radio, CheckCircle2, XCircle, Clock, Users, ChevronRight, X } from "lucide-react";
-import { Broadcast, BroadcastStatus, Template, Contact } from "@/types";
+import { Broadcast, BroadcastStatus, Template, Contact, WhatsappNumber } from "@/types";
 import { formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 import { Modal } from "@/components/ui/Modal";
@@ -90,6 +90,8 @@ export default function BroadcastsPage() {
                   <p className="text-xs text-gray-500 mb-2">
                     Template: <span className="text-gray-400">{b.template?.name}</span>
                     {" · "}
+                    From <span className="text-gray-400">{b.whatsappNumber?.label ?? "—"}</span>
+                    {" · "}
                     <Users className="inline w-3 h-3 mb-0.5" /> {b._count?.recipients ?? 0} recipients
                     {" · "}
                     {formatRelativeTime(b.createdAt)}
@@ -138,8 +140,10 @@ function CreateBroadcastModal({
   const [step, setStep] = useState<"template" | "contacts">("template");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [numbers, setNumbers] = useState<WhatsappNumber[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [whatsappNumberId, setWhatsappNumberId] = useState("");
   const [name, setName] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [saving, setSaving] = useState(false);
@@ -153,6 +157,14 @@ function CreateBroadcastModal({
     setTagFilter("");
     axios.get("/api/templates").then((r) => setTemplates(r.data.filter((t: Template) => t.isApproved))).catch(() => {});
     axios.get("/api/contacts?limit=500").then((r) => setContacts(r.data.contacts ?? [])).catch(() => {});
+    axios
+      .get("/api/whatsapp-numbers")
+      .then((r) => {
+        setNumbers(r.data);
+        const preferred = r.data.find((n: WhatsappNumber) => n.isDefault) ?? r.data[0];
+        setWhatsappNumberId(preferred?.id ?? "");
+      })
+      .catch(() => {});
   }, [isOpen]);
 
   const allTags = Array.from(new Set(contacts.flatMap((c) => (c.tags as string[]) || [])));
@@ -171,13 +183,14 @@ function CreateBroadcastModal({
   }
 
   async function handleCreate() {
-    if (!selectedTemplate || selectedIds.size === 0) return;
+    if (!selectedTemplate || selectedIds.size === 0 || !whatsappNumberId) return;
     setSaving(true);
     try {
       const res = await axios.post("/api/broadcasts", {
         name: name.trim() || undefined,
         templateId: selectedTemplate.id,
         contactIds: Array.from(selectedIds),
+        whatsappNumberId,
       });
       onCreate(res.data);
       toast.success(`Broadcast created with ${selectedIds.size} recipients`);
@@ -235,6 +248,19 @@ function CreateBroadcastModal({
             placeholder="Broadcast name (optional)"
             className="w-full mb-3 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500"
           />
+          <label className="block text-xs text-gray-500 mb-1">Send from</label>
+          <select
+            value={whatsappNumberId}
+            onChange={(e) => setWhatsappNumberId(e.target.value)}
+            className="w-full mb-3 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+          >
+            {numbers.length === 0 && <option value="">No lines available</option>}
+            {numbers.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.label} ({n.businessNumber})
+              </option>
+            ))}
+          </select>
           <div className="flex items-center gap-2 mb-3">
             <select
               value={tagFilter}
@@ -274,7 +300,7 @@ function CreateBroadcastModal({
           </div>
           <button
             onClick={handleCreate}
-            disabled={saving || selectedIds.size === 0}
+            disabled={saving || selectedIds.size === 0 || !whatsappNumberId}
             className="w-full py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm rounded-xl transition flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

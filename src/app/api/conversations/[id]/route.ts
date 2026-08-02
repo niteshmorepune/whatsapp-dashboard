@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { broadcastToAll } from "@/lib/sse";
+import { broadcastToAgents } from "@/lib/sse";
+import { agentHasAccessToNumber, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 
 export async function GET(
   _request: NextRequest,
@@ -14,12 +15,19 @@ export async function GET(
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: params.id },
-      include: { contact: true, agent: true },
+      include: { contact: true, agent: true, whatsappNumber: { select: { id: true, label: true, businessNumber: true } } },
     });
 
     if (!conversation) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    const allowed = await agentHasAccessToNumber(
+      session.user.id,
+      session.user.role,
+      conversation.whatsappNumberId
+    );
+    if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     return NextResponse.json(conversation);
   } catch (error) {
@@ -39,6 +47,25 @@ export async function PATCH(
     const body = await request.json();
     const { status, agentId } = body;
 
+    const existing = await prisma.conversation.findUnique({ where: { id: params.id } });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const requesterAllowed = await agentHasAccessToNumber(
+      session.user.id,
+      session.user.role,
+      existing.whatsappNumberId
+    );
+    if (!requesterAllowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    if (agentId) {
+      const assignee = await prisma.agent.findUnique({ where: { id: agentId }, select: { role: true } });
+      const assigneeAllowed =
+        !!assignee && (await agentHasAccessToNumber(agentId, assignee.role, existing.whatsappNumberId));
+      if (!assigneeAllowed) {
+        return NextResponse.json({ error: "Agent does not have access to this conversation's line" }, { status: 400 });
+      }
+    }
+
     const updated = await prisma.conversation.update({
       where: { id: params.id },
       data: {
@@ -48,7 +75,8 @@ export async function PATCH(
       include: { contact: true, agent: true },
     });
 
-    broadcastToAll("conversation-updated", { conversation: updated });
+    const eligibleAgentIds = await getAgentIdsWithNumberAccess(existing.whatsappNumberId);
+    broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: updated });
 
     return NextResponse.json(updated);
   } catch (error) {

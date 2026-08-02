@@ -24,6 +24,9 @@ export async function GET() {
         createdAt: true,
         updatedAt: true,
         _count: { select: { conversations: true } },
+        whatsappNumberGrants: {
+          select: { whatsappNumber: { select: { id: true, label: true, businessNumber: true } } },
+        },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, password, role } = body;
+    const { name, email, password, role, whatsappNumberIds } = body;
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: "name, email, password are required" }, { status: 400 });
@@ -63,6 +66,9 @@ export async function POST(request: NextRequest) {
         email,
         passwordHash,
         role: role ?? "AGENT",
+        ...(Array.isArray(whatsappNumberIds) && whatsappNumberIds.length > 0
+          ? { whatsappNumberGrants: { create: whatsappNumberIds.map((id: string) => ({ whatsappNumberId: id })) } }
+          : {}),
       },
       select: {
         id: true,
@@ -72,6 +78,9 @@ export async function POST(request: NextRequest) {
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        whatsappNumberGrants: {
+          select: { whatsappNumber: { select: { id: true, label: true, businessNumber: true } } },
+        },
       },
     });
 

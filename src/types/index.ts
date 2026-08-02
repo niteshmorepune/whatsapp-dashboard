@@ -3,6 +3,17 @@ export type ConversationStatus = "OPEN" | "RESOLVED" | "PENDING";
 export type MessageDirection = "INBOUND" | "OUTBOUND";
 export type MessageStatus = "SENT" | "DELIVERED" | "READ" | "FAILED";
 
+export interface WhatsappNumber {
+  id: string;
+  label: string;
+  businessNumber: string;
+  isDefault: boolean;
+  createdAt: string;
+  phoneNumberId?: string;
+  wabaId?: string;
+  _count?: { conversations: number };
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -11,6 +22,7 @@ export interface Agent {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  whatsappNumberGrants?: { whatsappNumber: Pick<WhatsappNumber, "id" | "label" | "businessNumber"> }[];
 }
 
 export interface Contact {
@@ -28,6 +40,7 @@ export interface Conversation {
   id: string;
   contactId: string;
   agentId: string | null;
+  whatsappNumberId: string;
   status: ConversationStatus;
   lastMessageAt: string;
   windowExpiresAt: string | null;
@@ -35,6 +48,7 @@ export interface Conversation {
   updatedAt: string;
   contact: Contact;
   agent: Agent | null;
+  whatsappNumber?: WhatsappNumber;
   messages?: Message[];
   _count?: { messages: number };
   lastMessage?: Message;
@@ -91,6 +105,7 @@ export interface Broadcast {
   name: string;
   templateId: string;
   agentId: string;
+  whatsappNumberId: string;
   status: BroadcastStatus;
   sentCount: number;
   failedCount: number;
@@ -98,6 +113,7 @@ export interface Broadcast {
   updatedAt: string;
   template?: { id: string; name: string };
   agent?: { id: string; name: string };
+  whatsappNumber?: { id: string; label: string; businessNumber: string };
   recipients?: BroadcastRecipient[];
   _count?: { recipients: number };
 }

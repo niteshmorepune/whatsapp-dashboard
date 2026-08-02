@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendTemplateMessage } from "@/lib/meta";
+import { toMetaConfig } from "@/lib/whatsapp-numbers";
 
 const DELAY_MS = 1000; // 1 message per second to stay well within Meta limits
 
@@ -21,6 +22,7 @@ export async function POST(
     where: { id: params.id },
     include: {
       template: true,
+      whatsappNumber: true,
       recipients: {
         where: { status: "PENDING" },
         include: { contact: true },
@@ -44,6 +46,7 @@ export async function POST(
   (async () => {
     let sent = 0;
     let failed = 0;
+    const metaConfig = toMetaConfig(broadcast.whatsappNumber);
 
     for (const recipient of broadcast.recipients) {
       if (recipient.contact.optedOut) {
@@ -57,6 +60,7 @@ export async function POST(
 
       try {
         const { messageId } = await sendTemplateMessage(
+          metaConfig,
           recipient.contact.phone,
           broadcast.template.name
         );

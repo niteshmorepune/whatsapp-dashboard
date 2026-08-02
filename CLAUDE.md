@@ -93,27 +93,41 @@ Notifications only trigger for `message.direction === "INBOUND"` — outbound me
 ### 24-hour messaging window
 `Conversation.windowExpiresAt` is set to `now + 24h` whenever an inbound message arrives (in `api/webhook`). The send API (`api/send`) checks `isWindowExpired(windowExpiresAt)` from `src/lib/utils.ts` before allowing free-form messages. Only template messages bypass the expiry check — all other types (text, image, document, audio, video) are blocked when the window is expired. The `WindowBanner` component shows a live countdown when under 2 hours remain and blocks the input when expired, auto-opening the template picker. The picker is dismissible — closing it does not re-enable the input; it can be reopened via the template icon button.
 
+### Multi-number (WhatsApp lines)
+This app can run more than one WhatsApp number side by side — e.g. one number for post-sale support, one for pre-sale marketing/telecalling — all on the same Meta WABA. Added because NEDS wanted Sales/Telecaller staff on a marketing number and Support staff on the existing support number, with neither seeing the other's conversations.
+
+- **`WhatsappNumber`** — one row per Meta phone number (`label`, `businessNumber`, `phoneNumberId`, `wabaId`, `accessToken`, `isDefault`). `accessToken`/`wabaId`/`phoneNumberId` are server-only — never returned to non-ADMIN sessions or included in any client-facing select beyond `id`/`label`/`businessNumber`/`isDefault`.
+- **`AgentWhatsappNumber`** — pivot granting an AGENT access to a line. **ADMIN implicitly has access to every line** (checked in code, not via rows) — there's no need to grant ADMINs individually. Managed from the Agents page (checkboxes) or `/numbers` (the numbers themselves).
+- **`Conversation.whatsappNumberId`** (required) and **`Broadcast.whatsappNumberId`** (required) — every conversation and broadcast belongs to exactly one line. A contact who has messaged two different NEDS numbers gets **one conversation per number**, never a merged thread — WhatsApp itself has no concept of moving a chat between business numbers, so this app doesn't pretend to either.
+- **`src/lib/whatsapp-numbers.ts`** — the only place access logic lives: `getAgentAccessibleNumberIds`, `agentHasAccessToNumber`, `getAgentIdsWithNumberAccess` (used to scope SSE/push fan-out — see below), `getNumberByPhoneNumberId` (resolves an inbound webhook's `metadata.phone_number_id`), `toMetaConfig`.
+- Every route that touches a conversation (`GET/PATCH /api/conversations/[id]`, `/messages`, `/assign`, `POST /api/send`, `POST /api/media/upload`) checks `agentHasAccessToNumber` for the **requesting** agent, even though the UI already filters what a non-admin agent sees — don't assume the list-scoping alone is enough; a conversation ID typed directly into a URL must 403, not 200, for an agent without that line's grant.
+- **SSE/push fan-out is line-scoped too, not just the REST reads.** `broadcastToAgents(agentIds, ...)` (not `broadcastToAll`) is used for every conversation/message event — the agent ID list comes from `getAgentIdsWithNumberAccess(whatsappNumberId)`. This was a real gap caught while building this: `broadcastToAll` would have pushed a Marketing-line message preview into a Support-only agent's inbox in real time even though `GET /api/conversations` correctly filtered it out on load.
+- **Rollout order matters**: `scripts/backfill-whatsapp-numbers.ts` (`npm run db:backfill-numbers`) must run *after* the `add_whatsapp_numbers` migration and *before* the `require_whatsapp_number_on_conversation_broadcast` migration — it upserts a "Support" `WhatsappNumber` from the (legacy, single-number) `META_*` env vars, backfills every existing Conversation/Broadcast onto it, and grants every active agent access to it. Skipping this before the NOT-NULL migration will fail the migration on any existing data. Safe to re-run (idempotent).
+- Adding a second (or third) number going forward does **not** need a migration or a deploy — it's a row in `/numbers` (ADMIN only), then per-agent grants on the Agents page. `phoneNumberId`/`wabaId`/`accessToken` come from Meta's WhatsApp Manager → API Setup for that specific number.
+
 ### Meta API
-All Meta Cloud API calls go through `src/lib/meta.ts`. The helper functions use an axios instance pre-configured with the bearer token. Meta API version is pinned to `v18.0`.
+All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.
 
-- `sendTextMessage(to, text)` — sends a plain text message
-- `sendTemplateMessage(to, templateName)` — sends only the template **name** with language `en_US` and empty `components`; no variable substitution. Template must exist and be approved in Meta Business Manager first.
-- `sendMediaMessage(to, mediaType, mediaId, caption?, filename?)` — sends image/document/audio/video by Meta media ID. For documents, `filename` is shown to the recipient.
-- `markMessageRead(messageId)` — marks a message as read
+- `sendTextMessage(config, to, text)` — sends a plain text message
+- `sendTemplateMessage(config, to, templateName)` — sends only the template **name** with language `en_US` and empty `components`; no variable substitution. Template must exist and be approved in Meta Business Manager first. Templates are approved per-WABA, so if all numbers share one WABA, a template approved once is usable from any of them.
+- `sendMediaMessage(config, to, mediaType, mediaId, caption?, filename?)` — sends image/document/audio/video by Meta media ID. For documents, `filename` is shown to the recipient.
+- `markMessageRead(config, messageId)` — marks a message as read
 
-After any deployment or access token rotation, the WABA must be subscribed to webhook events or no inbound messages will arrive:
+The `META_ACCESS_TOKEN`/`META_PHONE_NUMBER_ID`/`META_WABA_ID` env vars are now only read by `scripts/backfill-whatsapp-numbers.ts` (one-time, to seed the first `WhatsappNumber` row) — not by any request-handling code.
+
+After adding a number or rotating its token, that WABA must be (re-)subscribed to webhook events or no inbound messages will arrive on it:
 ```bash
-curl -X POST "https://graph.facebook.com/v18.0/${META_WABA_ID}/subscribed_apps?access_token=${META_ACCESS_TOKEN}"
+curl -X POST "https://graph.facebook.com/v18.0/${WABA_ID}/subscribed_apps?access_token=${ACCESS_TOKEN}"
 ```
-Verify with a GET to the same URL — response should be `{"data":[{"whatsapp_business_api_data":...}]}`, not `{"data":[]}`.
+Verify with a GET to the same URL — response should be `{"data":[{"whatsapp_business_api_data":...}]}`, not `{"data":[]}`. One webhook URL (`/api/webhook`) serves every number on the WABA — the handler reads `value.metadata.phone_number_id` from each inbound payload to know which `WhatsappNumber` row it belongs to, and drops (logs, doesn't crash) any message from a `phone_number_id` that has no matching row — add the number in `/numbers` first.
 
 ### Media attachments
 Meta media cannot be fetched directly from the browser — Meta's CDN requires an `Authorization: Bearer` header. Two routes handle this:
 
-- **`GET /api/media/[id]`** — proxies the media file from Meta. Resolves the media ID to a download URL via `GET /v18.0/{id}`, then fetches and streams the file. Add `?download=1&filename=foo.pdf` to force a browser download instead of inline display.
-- **`POST /api/media/upload`** — accepts a `multipart/form-data` file upload from the browser, forwards it to `POST /v18.0/{phoneNumberId}/media`, and returns `{ mediaId }`. Size limits: 16 MB for image/audio/video, 100 MB for documents.
+- **`GET /api/media/[id]`** — proxies the media file from Meta. Requires `?conversationId=` so it knows which number's token to fetch with (a bare media ID doesn't say which line it belongs to); falls back to the default number if omitted. Resolves the media ID to a download URL via `GET /v18.0/{id}`, then fetches and streams the file. Add `?download=1&filename=foo.pdf` to force a browser download instead of inline display.
+- **`POST /api/media/upload`** — accepts a `multipart/form-data` file upload with `file` + `conversationId`, resolves the conversation's `WhatsappNumber` for its `phoneNumberId`/token, 403s if the requesting agent isn't granted that line, forwards to `POST /v18.0/{phoneNumberId}/media`, and returns `{ mediaId }`. Size limits: 16 MB for image/audio/video, 100 MB for documents.
 
-Outbound media flow: browser uploads file → `/api/media/upload` returns `mediaId` → `/api/send` called with `{ type, mediaId, content (caption), filename }`.
+Outbound media flow: browser uploads file (with `conversationId`) → `/api/media/upload` returns `mediaId` → `/api/send` called with `{ conversationId, type, mediaId, content (caption), filename }`.
 
 `Message.mediaUrl` stores the Meta media ID for both inbound (set by webhook) and outbound (set by send route) messages. `MessageBubble` renders images inline, audio/video as native players, and documents as a download link using `/api/media/{mediaUrl}`.
 
@@ -136,12 +150,12 @@ Internal notes on a contact, visible to all agents.
 ### Broadcasts
 Bulk template message sends to multiple contacts.
 
-- **Models** — `Broadcast { id, name, templateId, agentId, status: DRAFT|SENDING|COMPLETED|FAILED, sentCount, failedCount }` and `BroadcastRecipient { id, broadcastId, contactId, status: PENDING|SENT|FAILED, metaMessageId }`
+- **Models** — `Broadcast { id, name, templateId, agentId, whatsappNumberId, status: DRAFT|SENDING|COMPLETED|FAILED, sentCount, failedCount }` and `BroadcastRecipient { id, broadcastId, contactId, status: PENDING|SENT|FAILED, metaMessageId }`
 - **API**:
-  - `GET/POST /api/broadcasts` — list all or create a new draft (pass `templateId` + `contactIds[]`)
+  - `GET/POST /api/broadcasts` — list all or create a new draft (pass `templateId` + `whatsappNumberId` + `contactIds[]`; 403s if the requesting agent isn't granted that line)
   - `GET/DELETE /api/broadcasts/[id]` — detail or delete (DELETE is ADMIN only)
   - `POST /api/broadcasts/[id]/send` — starts the send; returns immediately, processes in background at 1 msg/sec. Contacts with `optedOut: true` are automatically skipped (marked FAILED). Broadcast status transitions: `DRAFT → SENDING → COMPLETED`.
-- **UI** — `/broadcasts` page. Two-step creation modal: (1) pick approved template, (2) filter contacts by tag + select recipients. Send button on draft cards triggers the send route.
+- **UI** — `/broadcasts` page. Two-step creation modal: (1) pick approved template, (2) pick which line to send from (defaults to the agent's default/only line) + filter contacts by tag + select recipients. Send button on draft cards triggers the send route.
 - Only approved templates (`isApproved: true`) appear in the broadcast template picker — the filtering happens client-side.
 - The 1 message/second rate is a conservative limit to stay well within Meta's API constraints. For large lists this means sending is slow but reliable.
 
@@ -151,10 +165,13 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/api/agents` | ADMIN only; includes conversation count per agent |
-| POST | `/api/agents` | ADMIN only; creates agent with role AGENT by default |
-| PATCH | `/api/agents/[id]` | ADMIN only; updates name/email/password/role/isActive |
+| GET | `/api/agents` | ADMIN only; includes conversation count per agent + granted `whatsappNumberGrants` |
+| POST | `/api/agents` | ADMIN only; creates agent with role AGENT by default; accepts `whatsappNumberIds[]` to grant line access at creation |
+| PATCH | `/api/agents/[id]` | ADMIN only; updates name/email/password/role/isActive; `whatsappNumberIds[]` (if present) fully replaces that agent's line grants |
 | DELETE | `/api/agents/[id]` | ADMIN only; **soft-delete** — sets `isActive: false`, does not remove the row |
+| GET | `/api/whatsapp-numbers` | ADMIN sees every number (full config minus `accessToken`); AGENT sees only lines they're granted (id/label/businessNumber/isDefault only) |
+| POST | `/api/whatsapp-numbers` | ADMIN only; creates a number; setting `isDefault: true` unsets any previous default |
+| PATCH | `/api/whatsapp-numbers/[id]` | ADMIN only; blank `accessToken` leaves it unchanged (same idiom as the agent password field) |
 | GET | `/api/contacts` | Search + tag filter + pagination (limit 50); tag filtering is done in-memory after query, not in SQL |
 | POST | `/api/contacts` | Creates contact; normalizes phone by stripping leading `+`; tags is a JSON array |
 | GET | `/api/contacts/[id]` | Returns contact with all conversations and latest message per conversation |
@@ -163,13 +180,13 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 | GET | `/api/contacts/[id]/notes` | Returns notes for a contact, newest first, with agent name |
 | POST | `/api/contacts/[id]/notes` | Creates a note; agentId set from session |
 | DELETE | `/api/contacts/[id]/notes/[noteId]` | Author or ADMIN only |
-| GET | `/api/conversations` | Status filter + search; status `"ALL"` skips the filter |
-| POST | `/api/conversations` | Creates conversation for an existing contact |
-| GET | `/api/conversations/[id]` | Single conversation with contact and assigned agent |
-| PATCH | `/api/conversations/[id]` | Updates status and/or agentId; broadcasts `conversation-updated` SSE |
-| POST | `/api/conversations/[id]/assign` | Assigns or unassigns agent; broadcasts `conversation-updated` to all + `conversation-assigned` to the assigned agent only |
-| GET | `/api/conversations/[id]/messages` | Cursor-based pagination (limit 50); pass `cursor` (messageId) for older pages |
-| POST | `/api/send` | Sends text, template, image, document, audio, or video; only templates bypass window expiry |
+| GET | `/api/conversations` | Status filter + search; status `"ALL"` skips the filter. Non-ADMIN is always scoped to granted lines; `?whatsappNumberId=` narrows further (403 if not granted) |
+| POST | `/api/conversations` | Creates conversation for an existing contact; requires `whatsappNumberId` (403 if not granted) — currently unused by any UI, conversations are normally created by the inbound webhook |
+| GET | `/api/conversations/[id]` | Single conversation with contact, assigned agent, and `whatsappNumber`; 403 if the requesting agent isn't granted that line |
+| PATCH | `/api/conversations/[id]` | Updates status and/or agentId; 403 if requester isn't granted the line, 400 if the target `agentId` isn't; broadcasts `conversation-updated` only to agents granted that line |
+| POST | `/api/conversations/[id]/assign` | Assigns or unassigns agent; same line-access checks as PATCH above; broadcasts `conversation-updated` to agents granted that line + `conversation-assigned` to the assigned agent only |
+| GET | `/api/conversations/[id]/messages` | Cursor-based pagination (limit 50); pass `cursor` (messageId) for older pages; 403 if requester isn't granted the conversation's line |
+| POST | `/api/send` | Sends text, template, image, document, audio, or video; only templates bypass window expiry; 403 if requester isn't granted the conversation's line |
 | GET | `/api/media/[id]` | Proxies Meta media file to browser; supports `?download=1&filename=` |
 | POST | `/api/media/upload` | Uploads browser file to Meta, returns `{ mediaId }` |
 | GET | `/api/templates` | Returns all templates; **isApproved filtering happens on the client**, not here |
@@ -194,14 +211,16 @@ All routes return `{ error: string }` with an appropriate HTTP status on failure
 Using **Prisma v5** (not v7). The `prisma` singleton is in `src/lib/prisma.ts` with a `globalThis` cache to avoid multiple instances during hot reload. After any `prisma/schema.prisma` change, always run `npm run db:generate`.
 
 Database is **MySQL**. Key models and their non-obvious fields:
-- `Agent` — `passwordHash`, `role: ADMIN | AGENT`, `isActive`
-- `Contact` — `phone` (unique), `tags` (JSON array), `optedOut`. **Phone is stored without a `+` prefix** (e.g., `919028099919`), matching how Meta's webhook delivers the `from` field. `POST /api/contacts` normalizes by stripping any leading `+` before saving. `formatPhone()` adds the visual `+` for display only and must never be used as a lookup key. Passing a `+`-prefixed number directly to `prisma.contact.findUnique({ where: { phone } })` will silently miss the record.
-- `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`
+- `Agent` — `passwordHash`, `role: ADMIN | AGENT`, `isActive`, `whatsappNumberGrants` (AgentWhatsappNumber[] — which lines an AGENT can see; irrelevant for ADMIN, who always has every line)
+- `Contact` — `phone` (unique), `tags` (JSON array), `optedOut`. **Phone is stored without a `+` prefix** (e.g., `919028099919`), matching how Meta's webhook delivers the `from` field. `POST /api/contacts` normalizes by stripping any leading `+` before saving. `formatPhone()` adds the visual `+` for display only and must never be used as a lookup key. Passing a `+`-prefixed number directly to `prisma.contact.findUnique({ where: { phone } })` will silently miss the record. Phone is globally unique regardless of which of our numbers they've messaged — the line lives on `Conversation`, not `Contact`.
+- `WhatsappNumber` — `label`, `businessNumber` (unique, digits-only), `phoneNumberId` (unique, Meta's ID), `wabaId`, `accessToken` (`@db.Text`, server-only), `isDefault` (exactly one row should be default; enforced in application code via a `$transaction` on create/update, not a DB constraint)
+- `AgentWhatsappNumber` — pivot, `@@unique([agentId, whatsappNumberId])`
+- `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`, `whatsappNumberId` (required — which line this thread is on)
 - `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl` (Meta media ID for both inbound and outbound), `mediaType` (image/document/audio/video/null), `metaMessageId` (unique, used for dedup)
-- `Template` — `isApproved`, `metaTemplateId`, `category`
+- `Template` — `isApproved`, `metaTemplateId`, `category`. Approved per-WABA in Meta, not per-number, so one approval covers every `WhatsappNumber` on that WABA.
 - `QuickReply` — `name`, `content`
 - `ContactNote` — `contactId`, `agentId` (author), `content`; cascades on contact delete
-- `Broadcast` — `status: DRAFT | SENDING | COMPLETED | FAILED`, `sentCount`, `failedCount`, `templateId`, `agentId`
+- `Broadcast` — `status: DRAFT | SENDING | COMPLETED | FAILED`, `sentCount`, `failedCount`, `templateId`, `agentId`, `whatsappNumberId` (required — which line the recipients are messaged from)
 - `BroadcastRecipient` — `status: PENDING | SENT | FAILED`, `metaMessageId`; cascades on broadcast delete
 
 ### Utilities (`src/lib/utils.ts`)
@@ -275,13 +294,14 @@ Any API route that calls `getServerSession` (or reads headers/cookies) but decla
 
 ### Role-based access
 `session.user.role` is `"ADMIN"` or `"AGENT"`.
-- `/agents` page redirects non-admins client-side. `PATCH /api/agents/[id]` (edit name, email, password, role, isActive) is server-enforced to `ADMIN` only.
+- **WhatsApp line access is a separate, orthogonal axis from Role** — see "Multi-number (WhatsApp lines)" above. ADMIN always sees every line; AGENT sees only lines explicitly granted via `AgentWhatsappNumber`. This is deliberately per-agent, not a third role value — wadesk has no concept of "Sales"/"Support"/"Telecaller" and isn't meant to; the CRM's role taxonomy has changed twice already and this app shouldn't be coupled to it.
+- `/agents` and `/numbers` pages redirect non-admins client-side. `PATCH /api/agents/[id]` (edit name, email, password, role, isActive, whatsappNumberIds) and all of `/api/whatsapp-numbers/*` are server-enforced to `ADMIN` only.
 - `/profile` is accessible to any authenticated user and edits only their own record (`PATCH /api/profile`). Email or password changes require the current password.
 - Template approval (`PATCH /api/templates/[id]` with `isApproved`) is server-enforced to `ADMIN` only.
 - Quick reply management (POST/PATCH/DELETE `/api/quick-replies`) is server-enforced to `ADMIN` only. All agents can read and use them.
 - Broadcast delete (`DELETE /api/broadcasts/[id]`) is ADMIN only. Any agent can create and send broadcasts.
 - Contact note delete is restricted to the note author or ADMIN.
-- `GET /api/agents` is ADMIN-only. The `AssignAgent` component in the thread header calls this endpoint; non-admin users will see a permanently empty dropdown because the request fails silently. If agents need to reassign conversations, the GET endpoint's role restriction would need to be relaxed.
+- `GET /api/agents` is ADMIN-only. The `AssignAgent` component in the thread header calls this endpoint; non-admin users will see a permanently empty dropdown because the request fails silently. If agents need to reassign conversations, the GET endpoint's role restriction would need to be relaxed. Separately, `AssignAgent` also filters the fetched list down to agents who actually have access to the conversation's line (ADMIN always qualifies; AGENT needs a grant) before rendering options — the assign API would 400 on a mismatched pick anyway, this just keeps the dropdown from offering one.
 
 ### Styling
 Tailwind CSS. Dark theme throughout — background `gray-950`, surfaces `gray-900`/`gray-800`. Green (`green-500`/`green-600`) is the brand accent. Use `cn()` from `src/lib/utils.ts` (clsx + tailwind-merge) for conditional classes. Toast notifications use `sonner` (`import { toast } from "sonner"`). The emoji picker (`@emoji-mart/react`) is dynamically imported with `ssr: false` in `MessageInput`.

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { broadcastToAll } from "@/lib/sse";
+import { broadcastToAgents } from "@/lib/sse";
 import { sendTextMessage, sendTemplateMessage, sendMediaMessage } from "@/lib/meta";
+import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 
 const MEDIA_TYPES = ["image", "document", "audio", "video"] as const;
 type MediaType = (typeof MEDIA_TYPES)[number];
@@ -26,13 +27,23 @@ export async function POST(request: NextRequest) {
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
-      include: { contact: true },
+      include: { contact: true, whatsappNumber: true },
     });
 
     if (!conversation) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
+    const allowed = await agentHasAccessToNumber(
+      session.user.id,
+      session.user.role,
+      conversation.whatsappNumberId
+    );
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const metaConfig = toMetaConfig(conversation.whatsappNumber);
     const windowExpired = isWindowExpired(conversation.windowExpiresAt);
 
     if (type !== "template" && windowExpired) {
@@ -52,16 +63,16 @@ export async function POST(request: NextRequest) {
       if (!template) {
         return NextResponse.json({ error: "Template not found" }, { status: 404 });
       }
-      const result = await sendTemplateMessage(phone, template.name);
+      const result = await sendTemplateMessage(metaConfig, phone, template.name);
       metaMessageId = result.messageId ?? null;
     } else if (MEDIA_TYPES.includes(type as MediaType)) {
       if (!mediaId) {
         return NextResponse.json({ error: "mediaId required for media messages" }, { status: 400 });
       }
-      const result = await sendMediaMessage(phone, type as MediaType, mediaId, content || undefined, filename);
+      const result = await sendMediaMessage(metaConfig, phone, type as MediaType, mediaId, content || undefined, filename);
       metaMessageId = result.messageId ?? null;
     } else {
-      const result = await sendTextMessage(phone, content);
+      const result = await sendTextMessage(metaConfig, phone, content);
       metaMessageId = result.messageId ?? null;
     }
 
@@ -87,13 +98,14 @@ export async function POST(request: NextRequest) {
       include: { contact: true, agent: true },
     });
 
-    // SSE broadcast to all connected agents
-    broadcastToAll("new-message", {
+    // SSE broadcast only to agents granted this conversation's line
+    const eligibleAgentIds = await getAgentIdsWithNumberAccess(conversation.whatsappNumberId);
+    broadcastToAgents(eligibleAgentIds, "new-message", {
       conversationId,
       message,
       conversation: updatedConversation,
     });
-    broadcastToAll("conversation-updated", {
+    broadcastToAgents(eligibleAgentIds, "conversation-updated", {
       conversation: updatedConversation,
     });
 

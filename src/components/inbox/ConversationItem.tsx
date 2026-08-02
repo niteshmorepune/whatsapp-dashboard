@@ -8,6 +8,7 @@ interface ConversationItemProps {
   isSelected: boolean;
   onClick: () => void;
   unreadCount?: number;
+  showLineBadge?: boolean;
 }
 
 export function ConversationItem({
@@ -15,6 +16,7 @@ export function ConversationItem({
   isSelected,
   onClick,
   unreadCount = 0,
+  showLineBadge = false,
 }: ConversationItemProps) {
   const contact = conversation.contact;
   const displayName = contact.name ?? contact.phone;
@@ -57,6 +59,11 @@ export function ConversationItem({
           <span className="text-xs text-gray-400 truncate">
             {lastMessage ? truncate(lastMessage.content, 45) : "No messages yet"}
           </span>
+          {showLineBadge && conversation.whatsappNumber && (
+            <span className="text-[10px] text-gray-500 bg-gray-800 rounded px-1.5 py-0.5 flex-shrink-0">
+              {conversation.whatsappNumber.label}
+            </span>
+          )}
         </div>
 
         {conversation.agent && (

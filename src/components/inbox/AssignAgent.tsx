@@ -22,6 +22,14 @@ export function AssignAgent({ conversation, onAssigned }: AssignAgentProps) {
       .catch(() => {});
   }, []);
 
+  // Only offer agents who can actually see this conversation's line —
+  // ADMINs always qualify, AGENTs need an explicit grant for this number.
+  const eligibleAgents = agents.filter(
+    (a) =>
+      a.role === "ADMIN" ||
+      (a.whatsappNumberGrants ?? []).some((g) => g.whatsappNumber.id === conversation.whatsappNumberId)
+  );
+
   async function handleAssign(agentId: string | null) {
     setLoading(true);
     try {
@@ -51,7 +59,7 @@ export function AssignAgent({ conversation, onAssigned }: AssignAgentProps) {
         className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-50 max-w-[110px] sm:max-w-none sm:text-sm"
       >
         <option value="">Unassigned</option>
-        {agents.map((agent) => (
+        {eligibleAgents.map((agent) => (
           <option key={agent.id} value={agent.id}>
             {agent.name}
           </option>

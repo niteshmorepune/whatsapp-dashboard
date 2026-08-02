@@ -16,7 +16,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, email, password, role, isActive } = body;
+    const { name, email, password, role, isActive, whatsappNumberIds } = body;
 
     if (email !== undefined) {
       const conflict = await prisma.agent.findFirst({
@@ -24,6 +24,16 @@ export async function PATCH(
       });
       if (conflict) {
         return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+      }
+    }
+
+    if (Array.isArray(whatsappNumberIds)) {
+      await prisma.agentWhatsappNumber.deleteMany({ where: { agentId: params.id } });
+      if (whatsappNumberIds.length > 0) {
+        await prisma.agentWhatsappNumber.createMany({
+          data: whatsappNumberIds.map((whatsappNumberId: string) => ({ agentId: params.id, whatsappNumberId })),
+          skipDuplicates: true,
+        });
       }
     }
 
@@ -44,6 +54,9 @@ export async function PATCH(
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        whatsappNumberGrants: {
+          select: { whatsappNumber: { select: { id: true, label: true, businessNumber: true } } },
+        },
       },
     });
 

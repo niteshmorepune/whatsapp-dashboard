@@ -44,19 +44,51 @@ enum RecipientStatus {
 }
 
 model Agent {
-  id                String             @id @default(cuid())
+  id                String                @id @default(cuid())
   name              String
-  email             String             @unique
+  email             String                @unique
   passwordHash      String
-  role              Role               @default(AGENT)
-  isActive          Boolean            @default(true)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  role              Role                  @default(AGENT)
+  isActive          Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
   conversations     Conversation[]
   messages          Message[]
   contactNotes      ContactNote[]
   broadcasts        Broadcast[]
   pushSubscriptions PushSubscription[]
+  whatsappNumberGrants AgentWhatsappNumber[]
+}
+
+// A single Meta WABA can host several phone numbers (e.g. one for
+// post-sale support, one for pre-sale marketing). Every Conversation and
+// Broadcast belongs to exactly one of these; agent access is granted
+// per-number via AgentWhatsappNumber, independent of Role.
+model WhatsappNumber {
+  id             String                @id @default(cuid())
+  label          String
+  businessNumber String                @unique
+  phoneNumberId  String                @unique
+  wabaId         String
+  accessToken    String                @db.Text
+  isDefault      Boolean               @default(false)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  conversations  Conversation[]
+  broadcasts     Broadcast[]
+  agentGrants    AgentWhatsappNumber[]
+}
+
+model AgentWhatsappNumber {
+  id               String         @id @default(cuid())
+  agentId          String
+  whatsappNumberId String
+  createdAt        DateTime       @default(now())
+  agent            Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  whatsappNumber   WhatsappNumber @relation(fields: [whatsappNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, whatsappNumberId])
+  @@index([whatsappNumberId])
 }
 
 model PushSubscription {
@@ -89,6 +121,7 @@ model Conversation {
   id               String             @id @default(cuid())
   contactId        String
   agentId          String?
+  whatsappNumberId String
   status           ConversationStatus @default(OPEN)
   lastMessageAt    DateTime           @default(now())
   windowExpiresAt  DateTime?
@@ -96,10 +129,12 @@ model Conversation {
   updatedAt        DateTime           @updatedAt
   contact          Contact            @relation(fields: [contactId], references: [id])
   agent            Agent?             @relation(fields: [agentId], references: [id])
+  whatsappNumber   WhatsappNumber     @relation(fields: [whatsappNumberId], references: [id])
   messages         Message[]
 
   @@index([contactId])
   @@index([agentId])
+  @@index([whatsappNumberId])
   @@index([status])
   @@index([lastMessageAt])
 }
@@ -155,20 +190,23 @@ model ContactNote {
 }
 
 model Broadcast {
-  id          String             @id @default(cuid())
-  name        String
-  templateId  String
-  agentId     String
-  status      BroadcastStatus    @default(DRAFT)
-  sentCount   Int                @default(0)
-  failedCount Int                @default(0)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  template    Template           @relation(fields: [templateId], references: [id])
-  agent       Agent              @relation(fields: [agentId], references: [id])
-  recipients  BroadcastRecipient[]
+  id               String               @id @default(cuid())
+  name             String
+  templateId       String
+  agentId          String
+  whatsappNumberId String
+  status           BroadcastStatus      @default(DRAFT)
+  sentCount        Int                  @default(0)
+  failedCount      Int                  @default(0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  template         Template             @relation(fields: [templateId], references: [id])
+  agent            Agent                @relation(fields: [agentId], references: [id])
+  whatsappNumber   WhatsappNumber       @relation(fields: [whatsappNumberId], references: [id])
+  recipients       BroadcastRecipient[]
 
   @@index([agentId])
+  @@index([whatsappNumberId])
 }
 
 model BroadcastRecipient {

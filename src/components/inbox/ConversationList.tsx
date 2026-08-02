@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { Search } from "lucide-react";
-import { Conversation, ConversationStatus } from "@/types";
+import { Conversation, ConversationStatus, WhatsappNumber } from "@/types";
 import { ConversationItem } from "./ConversationItem";
 import { useSSE } from "@/hooks/useSSE";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,15 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [numbers, setNumbers] = useState<WhatsappNumber[]>([]);
+  const [lineId, setLineId] = useState<string>("ALL");
+
+  // Only fetched once — /api/whatsapp-numbers already scopes to what this
+  // agent can see, so the tab row simply reflects that (and is skipped
+  // entirely for an agent granted just one line).
+  useEffect(() => {
+    axios.get("/api/whatsapp-numbers").then((r) => setNumbers(r.data)).catch(() => {});
+  }, []);
 
   // ── Browser notification permission ──────────────────────────────────────
   useEffect(() => {
@@ -79,6 +88,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
       const params = new URLSearchParams();
       if (status !== "ALL") params.set("status", status);
       if (search) params.set("search", search);
+      if (lineId !== "ALL") params.set("whatsappNumberId", lineId);
       const res = await axios.get(`/api/conversations?${params}`);
       setConversations(res.data.conversations);
     } catch (err) {
@@ -86,7 +96,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     } finally {
       setLoading(false);
     }
-  }, [status, search]);
+  }, [status, search, lineId]);
 
   useEffect(() => {
     setLoading(true);
@@ -100,6 +110,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
   useSSE({
     "conversation-updated": ({ conversation }) => {
+      if (lineId !== "ALL" && conversation.whatsappNumberId !== lineId) return;
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === conversation.id);
         const next =
@@ -115,6 +126,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     },
 
     "new-message": ({ conversation, message }) => {
+      if (lineId !== "ALL" && conversation.whatsappNumberId !== lineId) return;
       // Always keep the list fresh
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === conversation.id);
@@ -157,18 +169,20 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
     },
 
     "conversation-assigned": ({ conversation, assignedBy }: { conversation: Conversation; assignedBy: string }) => {
-      setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.id === conversation.id);
-        const next =
-          idx === -1
-            ? [conversation, ...prev]
-            : prev.map((c, i) => (i === idx ? { ...c, ...conversation } : c));
-        return next.sort(
-          (a, b) =>
-            new Date(b.lastMessageAt).getTime() -
-            new Date(a.lastMessageAt).getTime()
-        );
-      });
+      if (lineId === "ALL" || conversation.whatsappNumberId === lineId) {
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === conversation.id);
+          const next =
+            idx === -1
+              ? [conversation, ...prev]
+              : prev.map((c, i) => (i === idx ? { ...c, ...conversation } : c));
+          return next.sort(
+            (a, b) =>
+              new Date(b.lastMessageAt).getTime() -
+              new Date(a.lastMessageAt).getTime()
+          );
+        });
+      }
 
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         const contactName = conversation.contact?.name ?? conversation.contact?.phone ?? "A conversation";
@@ -204,6 +218,33 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
           />
         </div>
       </div>
+
+      {/* Line tabs — only shown when this agent has more than one WhatsApp number */}
+      {numbers.length > 1 && (
+        <div className="flex gap-1.5 px-3 py-2 border-b border-gray-800 overflow-x-auto">
+          <button
+            onClick={() => setLineId("ALL")}
+            className={cn(
+              "px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors",
+              lineId === "ALL" ? "bg-green-500/10 text-green-400" : "text-gray-500 hover:text-gray-300"
+            )}
+          >
+            All lines
+          </button>
+          {numbers.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => setLineId(n.id)}
+              className={cn(
+                "px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors",
+                lineId === n.id ? "bg-green-500/10 text-green-400" : "text-gray-500 hover:text-gray-300"
+              )}
+            >
+              {n.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Status tabs */}
       <div className="flex border-b border-gray-800 px-2">
@@ -250,6 +291,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
               isSelected={conv.id === selectedId}
               onClick={() => onSelect(conv.id)}
               unreadCount={unreadCounts[conv.id] ?? 0}
+              showLineBadge={numbers.length > 1 && lineId === "ALL"}
             />
           ))
         )}

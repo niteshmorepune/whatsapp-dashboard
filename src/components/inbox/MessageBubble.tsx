@@ -24,6 +24,7 @@ function StatusTick({ status }: { status: Message["status"] }) {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isOutbound = message.direction === "OUTBOUND";
+  const mediaUrl = `/api/media/${message.mediaUrl}?conversationId=${message.conversationId}`;
 
   return (
     <div
@@ -46,22 +47,22 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             {message.mediaType === "image" ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={`/api/media/${message.mediaUrl}`}
+                src={mediaUrl}
                 alt="image"
                 className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer"
-                onClick={() => window.open(`/api/media/${message.mediaUrl}`, "_blank")}
+                onClick={() => window.open(mediaUrl, "_blank")}
               />
             ) : message.mediaType === "audio" ? (
-              <audio controls src={`/api/media/${message.mediaUrl}`} className="w-full max-w-xs" />
+              <audio controls src={mediaUrl} className="w-full max-w-xs" />
             ) : message.mediaType === "video" ? (
               <video
                 controls
-                src={`/api/media/${message.mediaUrl}`}
+                src={mediaUrl}
                 className="rounded-lg max-w-full max-h-48"
               />
             ) : (
               <a
-                href={`/api/media/${message.mediaUrl}?download=1&filename=${encodeURIComponent(message.content || "file")}`}
+                href={`${mediaUrl}&download=1&filename=${encodeURIComponent(message.content || "file")}`}
                 download={message.content || "file"}
                 className="flex items-center gap-2 bg-black/20 hover:bg-black/30 rounded-lg px-3 py-2 transition"
                 onClick={(e) => e.stopPropagation()}

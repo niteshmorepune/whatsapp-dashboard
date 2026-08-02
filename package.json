@@ -10,6 +10,7 @@
     "lint": "next lint",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "ts-node --project tsconfig.seed.json -r dotenv/config prisma/seed.ts",
+    "db:backfill-numbers": "ts-node --project tsconfig.seed.json scripts/backfill-whatsapp-numbers.ts",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "postinstall": "prisma generate"

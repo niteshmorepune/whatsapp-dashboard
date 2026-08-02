@@ -81,3 +81,15 @@ export function broadcastToAll(event: string, data: unknown): void {
     if (controllers.size === 0) connections.delete(agentId);
   });
 }
+
+/**
+ * Send an event only to the given agent IDs' connections.
+ * Used for conversation events, which must never reach an agent who isn't
+ * granted the conversation's WhatsappNumber line (see whatsapp-numbers.ts's
+ * getAgentIdsWithNumberAccess) — broadcastToAll would leak a Marketing-line
+ * conversation preview to a Support-only agent's inbox in real time even
+ * though the REST list endpoint correctly filters it out.
+ */
+export function broadcastToAgents(agentIds: string[], event: string, data: unknown): void {
+  agentIds.forEach((agentId) => sendToAgent(agentId, event, data));
+}

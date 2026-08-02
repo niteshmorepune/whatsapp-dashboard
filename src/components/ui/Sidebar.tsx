@@ -15,6 +15,7 @@ import {
   Radio,
   Zap,
   HelpCircle,
+  Phone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -87,6 +88,22 @@ export function Sidebar({ role, onClose }: SidebarProps) {
           >
             <UserCog className="w-4 h-4 flex-shrink-0" />
             Agents
+          </Link>
+        )}
+
+        {role === "ADMIN" && (
+          <Link
+            href="/numbers"
+            onClick={onClose}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+              pathname.startsWith("/numbers")
+                ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
+          >
+            <Phone className="w-4 h-4 flex-shrink-0" />
+            Numbers
           </Link>
         )}
       </nav>

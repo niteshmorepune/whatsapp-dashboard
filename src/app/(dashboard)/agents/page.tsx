@@ -13,19 +13,51 @@ import {
   User,
   Pencil,
 } from "lucide-react";
-import { Agent } from "@/types";
+import { Agent, WhatsappNumber } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 
-const emptyCreate = { name: "", email: "", password: "", role: "AGENT" as "ADMIN" | "AGENT" };
-const emptyEdit = { name: "", email: "", password: "", role: "AGENT" as "ADMIN" | "AGENT" };
+const emptyCreate = { name: "", email: "", password: "", role: "AGENT" as "ADMIN" | "AGENT", whatsappNumberIds: [] as string[] };
+const emptyEdit = { name: "", email: "", password: "", role: "AGENT" as "ADMIN" | "AGENT", whatsappNumberIds: [] as string[] };
+
+function LineCheckboxes({
+  numbers,
+  selected,
+  onChange,
+}: {
+  numbers: WhatsappNumber[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      {numbers.map((n) => (
+        <label key={n.id} className="flex items-center gap-2 text-sm text-gray-300">
+          <input
+            type="checkbox"
+            checked={selected.includes(n.id)}
+            onChange={(e) =>
+              onChange(e.target.checked ? [...selected, n.id] : selected.filter((id) => id !== n.id))
+            }
+            className="rounded border-gray-700 bg-gray-800 text-green-500 focus:ring-green-500"
+          />
+          {n.label} <span className="text-gray-600">({n.businessNumber})</span>
+        </label>
+      ))}
+      {numbers.length === 0 && (
+        <p className="text-xs text-gray-600">No WhatsApp numbers configured yet — add one on the Numbers page.</p>
+      )}
+    </div>
+  );
+}
 
 export default function AgentsPage() {
   const { data: session } = useSession();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [numbers, setNumbers] = useState<WhatsappNumber[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -46,11 +78,21 @@ export default function AgentsPage() {
       .then((r) => setAgents(r.data))
       .catch(() => toast.error("Failed to load agents"))
       .finally(() => setLoading(false));
+    axios
+      .get("/api/whatsapp-numbers")
+      .then((r) => setNumbers(r.data))
+      .catch(() => toast.error("Failed to load WhatsApp numbers"));
   }, []);
 
   function openEdit(agent: Agent) {
     setEditTarget(agent);
-    setEditForm({ name: agent.name, email: agent.email, password: "", role: agent.role });
+    setEditForm({
+      name: agent.name,
+      email: agent.email,
+      password: "",
+      role: agent.role,
+      whatsappNumberIds: agent.whatsappNumberGrants?.map((g) => g.whatsappNumber.id) ?? [],
+    });
   }
 
   async function handleCreate() {
@@ -77,10 +119,11 @@ export default function AgentsPage() {
     if (!editForm.name || !editForm.email) return toast.error("Name and email are required");
     setSaving(true);
     try {
-      const payload: Record<string, string> = {
+      const payload: Record<string, unknown> = {
         name: editForm.name,
         email: editForm.email,
         role: editForm.role,
+        whatsappNumberIds: editForm.whatsappNumberIds,
       };
       if (editForm.password) payload.password = editForm.password;
       const res = await axios.patch(`/api/agents/${editTarget.id}`, payload);
@@ -151,12 +194,30 @@ export default function AgentsPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={agent.name} size="sm" />
-                      <span className="text-sm font-medium text-white">
-                        {agent.name}
-                        {agent.id === session?.user?.id && (
-                          <span className="ml-1 text-xs text-gray-500">(you)</span>
+                      <div>
+                        <span className="text-sm font-medium text-white">
+                          {agent.name}
+                          {agent.id === session?.user?.id && (
+                            <span className="ml-1 text-xs text-gray-500">(you)</span>
+                          )}
+                        </span>
+                        {agent.role !== "ADMIN" && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {(agent.whatsappNumberGrants ?? []).length === 0 ? (
+                              <span className="text-[10px] text-amber-500">No lines granted</span>
+                            ) : (
+                              agent.whatsappNumberGrants!.map((g) => (
+                                <span
+                                  key={g.whatsappNumber.id}
+                                  className="text-[10px] text-gray-500 bg-gray-800 rounded px-1.5 py-0.5"
+                                >
+                                  {g.whatsappNumber.label}
+                                </span>
+                              ))
+                            )}
+                          </div>
                         )}
-                      </span>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell">
@@ -256,6 +317,16 @@ export default function AgentsPage() {
               <option value="ADMIN">Admin</option>
             </select>
           </div>
+          {createForm.role === "AGENT" && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">WhatsApp lines this agent can see</label>
+              <LineCheckboxes
+                numbers={numbers}
+                selected={createForm.whatsappNumberIds}
+                onChange={(ids) => setCreateForm((p) => ({ ...p, whatsappNumberIds: ids }))}
+              />
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => setShowCreate(false)}
@@ -322,6 +393,16 @@ export default function AgentsPage() {
               <option value="ADMIN">Admin</option>
             </select>
           </div>
+          {editForm.role === "AGENT" && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">WhatsApp lines this agent can see</label>
+              <LineCheckboxes
+                numbers={numbers}
+                selected={editForm.whatsappNumberIds}
+                onChange={(ids) => setEditForm((p) => ({ ...p, whatsappNumberIds: ids }))}
+              />
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => setEditTarget(null)}

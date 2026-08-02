@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { broadcastToAll, getConnectedAgentIds } from "@/lib/sse";
+import { broadcastToAgents, getConnectedAgentIds } from "@/lib/sse";
 import { sendPushToAgents } from "@/lib/webpush";
+import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import type { WhatsappNumber } from "@prisma/client";
 
 // GET: Meta webhook verification
 export async function GET(request: NextRequest) {
@@ -35,8 +37,20 @@ export async function POST(request: NextRequest) {
 
         // Handle inbound messages
         if (value.messages?.length) {
+          const phoneNumberId: string | undefined = value.metadata?.phone_number_id;
+          const whatsappNumber = phoneNumberId
+            ? await getNumberByPhoneNumberId(phoneNumberId)
+            : null;
+
+          if (!whatsappNumber) {
+            console.error(
+              `Webhook: no WhatsappNumber row matches metadata.phone_number_id="${phoneNumberId}" — message dropped. Add this number via /numbers first.`
+            );
+            continue;
+          }
+
           for (const msg of value.messages) {
-            await handleInboundMessage(msg, value.contacts?.[0]);
+            await handleInboundMessage(msg, value.contacts?.[0], whatsappNumber);
           }
         }
 
@@ -70,7 +84,8 @@ async function handleInboundMessage(
     video?: { id: string; mime_type: string };
     errors?: { title?: string; message?: string }[];
   },
-  contactInfo?: { profile?: { name?: string } }
+  contactInfo: { profile?: { name?: string } } | undefined,
+  whatsappNumber: WhatsappNumber
 ) {
   const phone = msg.from;
   const metaMessageId = msg.id;
@@ -112,10 +127,14 @@ async function handleInboundMessage(
     },
   });
 
-  // Find or create conversation
+  // Find or create conversation — scoped per line, so a contact who has
+  // messaged both numbers (e.g. a lead on the marketing line who later
+  // texts the support line directly) gets one conversation per number,
+  // never one merged thread.
   let conversation = await prisma.conversation.findFirst({
     where: {
       contactId: contact.id,
+      whatsappNumberId: whatsappNumber.id,
       status: { in: ["OPEN", "PENDING"] },
     },
     orderBy: { lastMessageAt: "desc" },
@@ -129,6 +148,7 @@ async function handleInboundMessage(
     conversation = await prisma.conversation.create({
       data: {
         contactId: contact.id,
+        whatsappNumberId: whatsappNumber.id,
         status: "OPEN",
         lastMessageAt: new Date(),
         windowExpiresAt,
@@ -158,6 +178,10 @@ async function handleInboundMessage(
         contact_name: contactInfo?.profile?.name ?? null,
         message: content,
         conversation_id: conversation.id,
+        // Which of our numbers this arrived on — lets the CRM route a
+        // marketing-line message differently from a support-line one.
+        whatsapp_number: whatsappNumber.businessNumber,
+        whatsapp_line_label: whatsappNumber.label,
       }),
     }).catch(() => {}); // fire-and-forget — never block the Meta webhook response
   }
@@ -194,23 +218,20 @@ async function handleInboundMessage(
     },
   });
 
-  // Broadcast to all connected agents
-  broadcastToAll("new-message", {
+  // Broadcast only to agents granted this conversation's line
+  const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
+  broadcastToAgents(eligibleAgentIds, "new-message", {
     conversationId: conversation.id,
     message,
     conversation: fullConversation,
   });
-  broadcastToAll("conversation-updated", {
+  broadcastToAgents(eligibleAgentIds, "conversation-updated", {
     conversation: fullConversation,
   });
 
-  // Push notification to agents who are NOT currently connected via SSE
+  // Push notification to eligible agents who are NOT currently connected via SSE
   const connectedIds = new Set(getConnectedAgentIds());
-  const allAgents = await prisma.agent.findMany({
-    where: { isActive: true },
-    select: { id: true },
-  });
-  const offlineAgentIds = allAgents.map((a) => a.id).filter((id) => !connectedIds.has(id));
+  const offlineAgentIds = eligibleAgentIds.filter((id) => !connectedIds.has(id));
   if (offlineAgentIds.length > 0) {
     const senderName = contact.name || `+${phone}`;
     const preview = content.length > 100 ? content.slice(0, 100) + "…" : content;
@@ -237,6 +258,7 @@ async function handleStatusUpdate(status: {
 
   const message = await prisma.message.findUnique({
     where: { metaMessageId },
+    include: { conversation: { select: { whatsappNumberId: true } } },
   });
   if (!message) return;
 
@@ -245,7 +267,8 @@ async function handleStatusUpdate(status: {
     data: { status: newStatus },
   });
 
-  broadcastToAll("message-status", {
+  const eligibleAgentIds = await getAgentIdsWithNumberAccess(message.conversation.whatsappNumberId);
+  broadcastToAgents(eligibleAgentIds, "message-status", {
     conversationId: message.conversationId,
     messageId: message.id,
     status: newStatus,

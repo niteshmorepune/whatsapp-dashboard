@@ -107,6 +107,7 @@ export function MessageInput({
     try {
       const form = new FormData();
       form.append("file", attachment.file);
+      form.append("conversationId", conversationId);
       const uploadRes = await axios.post("/api/media/upload", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
