@@ -211,6 +211,18 @@ before responding. Forwarding Prisma's raw aggregate result here would have
 made the CRM's PHP-side `(int) $totals['_count']` cast that whole object down
 to `1` regardless of real call volume.
 
+**A second gotcha, caught live in production, not before shipping**: this
+route is service-key-only (no session), same as `/api/send`/
+`/api/send-template` — but `src/middleware.ts`'s matcher must **also**
+exclude it, or NextAuth's middleware redirects/401s the request before the
+route handler's own `X-Service-Key` check ever runs (this app's own docs
+already warned about exactly this for `/api/send`/`/api/send-template` —
+missed applying the same rule to a new service-key route). Symptom: the
+CRM's poll (and a direct curl test) got back the `/login` page's HTML,
+not JSON, and failed to `JSON.parse`. Fixed by adding `api/ai/usage` to
+the matcher's negative-lookahead exclusion list alongside the other
+service-key routes.
+
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.
 
