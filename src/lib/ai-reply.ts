@@ -3,6 +3,16 @@ import { prisma } from "@/lib/prisma";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 300;
+const FEATURE = "after_hours_reply";
+
+// USD per MILLION tokens — must match the NEDS CRM's own
+// config('services.anthropic.pricing') rate for this model
+// (config/services.php in the neds-crm repo) so the two apps' "Estimated
+// cost" figures agree once the CRM's AI Usage Report pulls this app's
+// numbers in via GET /api/ai/usage. Update both sides if Anthropic's
+// published pricing changes.
+const PRICE_PER_MILLION_INPUT_TOKENS_USD = 1.0;
+const PRICE_PER_MILLION_OUTPUT_TOKENS_USD = 5.0;
 
 interface RecentMessage {
   direction: "INBOUND" | "OUTBOUND";
@@ -80,6 +90,19 @@ ${faqBlock}`;
     }
 
     const data = await response.json();
+
+    // Logged for every completed call, regardless of whether usable reply
+    // text comes out below — tokens are billed by Anthropic either way, and
+    // the NEDS CRM's AI Usage Report pulls this via GET /api/ai/usage.
+    const inputTokens = Number(data.usage?.input_tokens) || 0;
+    const outputTokens = Number(data.usage?.output_tokens) || 0;
+    const costUsd =
+      (inputTokens / 1_000_000) * PRICE_PER_MILLION_INPUT_TOKENS_USD +
+      (outputTokens / 1_000_000) * PRICE_PER_MILLION_OUTPUT_TOKENS_USD;
+    prisma.aiUsage
+      .create({ data: { feature: FEATURE, model: MODEL, inputTokens, outputTokens, costUsd } })
+      .catch((error) => console.error("Failed to log AI usage:", error));
+
     const textBlock = data.content?.find((block: { type: string }) => block.type === "text");
     const text = textBlock?.text;
     return typeof text === "string" && text.trim() ? text.trim() : null;

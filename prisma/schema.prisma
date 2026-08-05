@@ -121,6 +121,24 @@ model FaqEntry {
   updatedAt DateTime @updatedAt
 }
 
+// One row per Anthropic API call the after-hours assistant makes. Logged for
+// every completed (2xx) response regardless of whether usable reply text was
+// extracted — tokens are billed either way. Exposed via GET /api/ai/usage
+// (service-key only) so the NEDS CRM's own AI Usage Report can pull this
+// app's spend in alongside Drishti's and SMDost's, the same "each app exposes
+// its own /api/ai/usage, CRM polls and merges" pattern used for those two.
+model AiUsage {
+  id           String   @id @default(cuid())
+  feature      String
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  costUsd      Float
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model AgentWhatsappNumber {
   id               String         @id @default(cuid())
   agentId          String

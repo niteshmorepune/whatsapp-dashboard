@@ -181,6 +181,36 @@ lead going unanswered until the next business day.
   NOT compute this — it's only needed on the single-conversation/number
   detail views.
 
+### AI usage reporting (added 2026-08-05)
+`AiUsage` (id, feature, model, inputTokens, outputTokens, costUsd, createdAt)
+gets one row per completed (2xx) Anthropic API call — currently only the
+after-hours assistant (`feature: "after_hours_reply"`), logged inside
+`generateAiReply()` right after the response comes back, regardless of
+whether usable reply text was extracted from it (tokens are billed by
+Anthropic either way). Pricing is hardcoded in `src/lib/ai-reply.ts`
+(`PRICE_PER_MILLION_INPUT_TOKENS_USD` / `..._OUTPUT_...`, currently $1/$5 for
+`claude-haiku-4-5-20251001`) — **this must be kept in sync with the NEDS
+CRM's own `config('services.anthropic.pricing')`** (a separate repo/app), or
+the two apps' cost estimates will silently disagree.
+
+**`GET /api/ai/usage`** (`src/app/api/ai/usage/route.ts`) exposes this,
+service-key only (`X-Service-Key` matching `WADESK_SERVICE_KEY` — the same
+secret already used for `/api/send`'s CRM auth path, no new secret needed),
+accepting `?from=&to=` ISO8601 query params. This exists purely so the CRM's
+own AI Usage Report can pull this app's spend in — mirrors the identical
+`GET /api/ai/usage` contract Drishti and SMDost already expose for the same
+report (`app/Services/AiUsageMetrics.php`'s `fetchAppUsage()` on the CRM
+side polls all three the same way). Response shape:
+```json
+{ "data": { "totals": { "_count": 12, "_sum": { "inputTokens": 4500, "outputTokens": 1800, "costUsd": 0.0135 } } } }
+```
+**Gotcha already hit once while building this**: Prisma's `aggregate()`
+`_count: true` returns a breakdown object (`{_all, id, feature, ...}`), not
+a plain number — the route explicitly flattens it to `_count: totals._count._all`
+before responding. Forwarding Prisma's raw aggregate result here would have
+made the CRM's PHP-side `(int) $totals['_count']` cast that whole object down
+to `1` regardless of real call volume.
+
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.
 
