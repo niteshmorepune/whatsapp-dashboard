@@ -1,11 +1,11 @@
 -- AlterTable
-ALTER TABLE `conversation` ADD COLUMN `aiMuted` BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE `Conversation` ADD COLUMN `aiMuted` BOOLEAN NOT NULL DEFAULT false;
 
 -- AlterTable
-ALTER TABLE `message` ADD COLUMN `sentByAi` BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE `Message` ADD COLUMN `sentByAi` BOOLEAN NOT NULL DEFAULT false;
 
 -- AlterTable
-ALTER TABLE `whatsappnumber` ADD COLUMN `aiMode` ENUM('AUTO', 'FORCE_ON', 'FORCE_OFF') NOT NULL DEFAULT 'AUTO',
+ALTER TABLE `WhatsappNumber` ADD COLUMN `aiMode` ENUM('AUTO', 'FORCE_ON', 'FORCE_OFF') NOT NULL DEFAULT 'AUTO',
     ADD COLUMN `businessHours` JSON NULL;
 
 -- CreateTable
