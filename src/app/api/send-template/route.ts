@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { phone, businessNumber, templateName, variables } = body;
+    const { phone, businessNumber, templateName, variables, resolveOtherLines } = body;
 
     if (!phone || !businessNumber || !templateName) {
       return NextResponse.json(
@@ -80,6 +80,21 @@ export async function POST(request: NextRequest) {
           status: "OPEN",
           lastMessageAt: new Date(),
         },
+      });
+    }
+
+    // Used by the CRM's Deal-Won handoff: once a client is being handed to
+    // support on this line, any still-open conversation for the same
+    // contact on a DIFFERENT line (e.g. the pre-sale Marketing line) is
+    // stale — resolve it so it drops out of that line's active queue.
+    if (resolveOtherLines) {
+      await prisma.conversation.updateMany({
+        where: {
+          contactId: contact.id,
+          whatsappNumberId: { not: whatsappNumber.id },
+          status: { in: ["OPEN", "PENDING"] },
+        },
+        data: { status: "RESOLVED" },
       });
     }
 
