@@ -13,6 +13,8 @@ import {
   Zap,
   HelpCircle,
   Phone,
+  Bot,
+  CalendarOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -101,6 +103,38 @@ export function Sidebar({ role, onClose }: SidebarProps) {
           >
             <Phone className="w-4 h-4 flex-shrink-0" />
             Numbers
+          </Link>
+        )}
+
+        {role === "ADMIN" && (
+          <Link
+            href="/faq"
+            onClick={onClose}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+              pathname.startsWith("/faq")
+                ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
+          >
+            <Bot className="w-4 h-4 flex-shrink-0" />
+            AI FAQ
+          </Link>
+        )}
+
+        {role === "ADMIN" && (
+          <Link
+            href="/holidays"
+            onClick={onClose}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+              pathname.startsWith("/holidays")
+                ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
+          >
+            <CalendarOff className="w-4 h-4 flex-shrink-0" />
+            Holidays
           </Link>
         )}
       </nav>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { format, isToday, isYesterday } from "date-fns";
-import { CheckCircle, Phone, Loader2, ChevronUp } from "lucide-react";
+import { CheckCircle, Phone, Loader2, ChevronUp, Bot } from "lucide-react";
 import { Conversation, Message } from "@/types";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
@@ -38,6 +38,7 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [resumingAi, setResumingAi] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +98,20 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
       setNextCursor(res.data.nextCursor);
     } finally {
       setLoadingMore(false);
+    }
+  }
+
+  async function handleResumeAi() {
+    if (!conversation) return;
+    setResumingAi(true);
+    try {
+      await axios.patch(`/api/conversations/${conversationId}`, { aiMuted: false });
+      await fetchData(); // re-GET so aiCurrentlyLive (computed server-side) reflects the change
+      toast.success("AI assistant resumed on this conversation");
+    } catch {
+      toast.error("Failed to resume AI");
+    } finally {
+      setResumingAi(false);
     }
   }
 
@@ -165,6 +180,22 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
               >
                 {conversation.status}
               </Badge>
+              {conversation.aiCurrentlyLive && !conversation.aiMuted && (
+                <Badge variant="green">
+                  <Bot className="w-3 h-3 mr-1" /> AI handling
+                </Badge>
+              )}
+              {conversation.aiMuted && (
+                <button
+                  onClick={handleResumeAi}
+                  disabled={resumingAi}
+                  title="A human reply muted the AI assistant on this conversation — resume it"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:border-gray-600 transition"
+                >
+                  {resumingAi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />}
+                  Resume AI
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1 mt-0.5">
               <Phone className="w-3 h-3 text-gray-500 flex-shrink-0" />

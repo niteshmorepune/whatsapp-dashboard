@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
 import { agentHasAccessToNumber, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/lib/business-hours";
 
 export async function GET(
   _request: NextRequest,
@@ -15,7 +16,13 @@ export async function GET(
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: params.id },
-      include: { contact: true, agent: true, whatsappNumber: { select: { id: true, label: true, businessNumber: true } } },
+      include: {
+        contact: true,
+        agent: true,
+        whatsappNumber: {
+          select: { id: true, label: true, businessNumber: true, aiMode: true, businessHours: true },
+        },
+      },
     });
 
     if (!conversation) {
@@ -29,7 +36,16 @@ export async function GET(
     );
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    return NextResponse.json(conversation);
+    // Whether the AI after-hours assistant would currently reply on this
+    // conversation's line — informational only, drives the ThreadView badge.
+    const holidayDateKeys = await getHolidayDateKeys();
+    const aiCurrentlyLive = resolveAiLiveState(
+      conversation.whatsappNumber.aiMode,
+      conversation.whatsappNumber.businessHours as BusinessHours | null,
+      holidayDateKeys
+    );
+
+    return NextResponse.json({ ...conversation, aiCurrentlyLive });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Failed to fetch conversation" }, { status: 500 });
@@ -45,7 +61,7 @@ export async function PATCH(
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { status, agentId } = body;
+    const { status, agentId, aiMuted } = body;
 
     const existing = await prisma.conversation.findUnique({ where: { id: params.id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -71,6 +87,7 @@ export async function PATCH(
       data: {
         ...(status && { status }),
         ...(agentId !== undefined && { agentId }),
+        ...(typeof aiMuted === "boolean" && { aiMuted }),
       },
       include: { contact: true, agent: true },
     });

@@ -2,6 +2,14 @@ export type Role = "ADMIN" | "AGENT";
 export type ConversationStatus = "OPEN" | "RESOLVED" | "PENDING";
 export type MessageDirection = "INBOUND" | "OUTBOUND";
 export type MessageStatus = "SENT" | "DELIVERED" | "READ" | "FAILED";
+export type AiMode = "AUTO" | "FORCE_ON" | "FORCE_OFF";
+
+export interface DayHours {
+  day: number; // 0=Sun .. 6=Sat
+  isOpen: boolean;
+  openTime: string; // "HH:mm"
+  closeTime: string; // "HH:mm"
+}
 
 export interface WhatsappNumber {
   id: string;
@@ -11,7 +19,26 @@ export interface WhatsappNumber {
   createdAt: string;
   phoneNumberId?: string;
   wabaId?: string;
+  aiMode?: AiMode;
+  businessHours?: DayHours[] | null;
+  aiCurrentlyLive?: boolean;
   _count?: { conversations: number };
+}
+
+export interface Holiday {
+  id: string;
+  date: string;
+  label: string;
+  createdAt: string;
+}
+
+export interface FaqEntry {
+  id: string;
+  question: string;
+  answer: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Agent {
@@ -44,6 +71,7 @@ export interface Conversation {
   status: ConversationStatus;
   lastMessageAt: string;
   windowExpiresAt: string | null;
+  aiMuted: boolean;
   createdAt: string;
   updatedAt: string;
   contact: Contact;
@@ -53,6 +81,7 @@ export interface Conversation {
   _count?: { messages: number };
   lastMessage?: Message;
   unreadCount?: number;
+  aiCurrentlyLive?: boolean;
 }
 
 export interface Message {
@@ -65,6 +94,7 @@ export interface Message {
   metaMessageId: string | null;
   status: MessageStatus;
   sentByAgentId: string | null;
+  sentByAi: boolean;
   createdAt: string;
   sentByAgent?: Agent | null;
 }

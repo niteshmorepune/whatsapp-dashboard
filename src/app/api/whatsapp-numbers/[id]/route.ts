@@ -15,7 +15,14 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { label, businessNumber, phoneNumberId, wabaId, accessToken, isDefault } = body;
+    const { label, businessNumber, phoneNumberId, wabaId, accessToken, isDefault, aiMode, businessHours } = body;
+
+    if (aiMode !== undefined && !["AUTO", "FORCE_ON", "FORCE_OFF"].includes(aiMode)) {
+      return NextResponse.json({ error: "aiMode must be AUTO, FORCE_ON, or FORCE_OFF" }, { status: 400 });
+    }
+    if (businessHours !== undefined && businessHours !== null && !Array.isArray(businessHours)) {
+      return NextResponse.json({ error: "businessHours must be an array" }, { status: 400 });
+    }
 
     const number = await prisma.$transaction(async (tx) => {
       if (isDefault === true) {
@@ -33,6 +40,8 @@ export async function PATCH(
           ...(wabaId !== undefined && { wabaId }),
           ...(accessToken !== undefined && accessToken !== "" && { accessToken }),
           ...(isDefault !== undefined && { isDefault }),
+          ...(aiMode !== undefined && { aiMode }),
+          ...(businessHours !== undefined && { businessHours }),
         },
         select: {
           id: true,
@@ -41,6 +50,8 @@ export async function PATCH(
           phoneNumberId: true,
           wabaId: true,
           isDefault: true,
+          aiMode: true,
+          businessHours: true,
         },
       });
     });

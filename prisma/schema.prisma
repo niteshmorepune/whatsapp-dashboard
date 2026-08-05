@@ -43,6 +43,16 @@ enum RecipientStatus {
   FAILED
 }
 
+// AUTO: AI replies only outside the configured business hours/holidays for
+// this line. FORCE_ON / FORCE_OFF override the schedule entirely — used for
+// a short-staffed day (force on during hours) or a wanted-human-touch
+// period (force off outside hours).
+enum AiMode {
+  AUTO
+  FORCE_ON
+  FORCE_OFF
+}
+
 model Agent {
   id                String                @id @default(cuid())
   name              String
@@ -72,11 +82,43 @@ model WhatsappNumber {
   wabaId         String
   accessToken    String                @db.Text
   isDefault      Boolean               @default(false)
+  // AI after-hours assistant (see src/lib/business-hours.ts, src/lib/ai-reply.ts).
+  // businessHours is a 7-entry array, one per JS Date#getDay() index (0=Sun):
+  // [{ day: 0-6, isOpen: boolean, openTime: "HH:mm", closeTime: "HH:mm" }].
+  // Times are interpreted in Asia/Kolkata — this app is single-timezone (NEDS
+  // is an India-only business), so no per-number timezone field is stored.
+  aiMode         AiMode                @default(AUTO)
+  businessHours  Json?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   conversations  Conversation[]
   broadcasts     Broadcast[]
   agentGrants    AgentWhatsappNumber[]
+}
+
+// Company-wide holiday calendar (not per-line — a holiday is a holiday for
+// everyone). Consulted by isWithinBusinessHours() alongside each line's own
+// weekly schedule.
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  label     String
+  createdAt DateTime @default(now())
+
+  @@unique([date])
+}
+
+// Admin-maintained knowledge base the AI after-hours assistant is grounded
+// in — it must never answer from outside this list (pricing, timelines,
+// commitments). Separate from QuickReply, which is agent-facing canned text
+// inserted manually, not AI context.
+model FaqEntry {
+  id        String   @id @default(cuid())
+  question  String   @db.Text
+  answer    String   @db.Text
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AgentWhatsappNumber {
@@ -125,6 +167,10 @@ model Conversation {
   status           ConversationStatus @default(OPEN)
   lastMessageAt    DateTime           @default(now())
   windowExpiresAt  DateTime?
+  // Set true the moment any human agent sends on this thread, so the AI
+  // after-hours assistant stops replying here even if it's still "live" for
+  // the line as a whole. Manually reset via the "Resume AI" action.
+  aiMuted          Boolean            @default(false)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   contact          Contact            @relation(fields: [contactId], references: [id])
@@ -149,6 +195,9 @@ model Message {
   metaMessageId  String?          @unique
   status         MessageStatus    @default(SENT)
   sentByAgentId  String?
+  // True for a message the AI after-hours assistant sent on its own
+  // (sentByAgentId stays null for these, same as a CRM-forwarded send).
+  sentByAi       Boolean          @default(false)
   createdAt      DateTime         @default(now())
   conversation   Conversation     @relation(fields: [conversationId], references: [id])
   sentByAgent    Agent?           @relation(fields: [sentByAgentId], references: [id])

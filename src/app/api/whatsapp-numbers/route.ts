@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAgentAccessibleNumberIds } from "@/lib/whatsapp-numbers";
+import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/lib/business-hours";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +24,22 @@ export async function GET() {
 
     if (session.user.role === "ADMIN") {
       const numbers = await prisma.whatsappNumber.findMany({
-        select: { ...PUBLIC_SELECT, phoneNumberId: true, wabaId: true, _count: { select: { conversations: true } } },
+        select: {
+          ...PUBLIC_SELECT,
+          phoneNumberId: true,
+          wabaId: true,
+          aiMode: true,
+          businessHours: true,
+          _count: { select: { conversations: true } },
+        },
         orderBy: { createdAt: "asc" },
       });
-      return NextResponse.json(numbers);
+      const holidayDateKeys = await getHolidayDateKeys();
+      const withAiStatus = numbers.map((n) => ({
+        ...n,
+        aiCurrentlyLive: resolveAiLiveState(n.aiMode, n.businessHours as BusinessHours | null, holidayDateKeys),
+      }));
+      return NextResponse.json(withAiStatus);
     }
 
     const accessibleIds = await getAgentAccessibleNumberIds(session.user.id, session.user.role);

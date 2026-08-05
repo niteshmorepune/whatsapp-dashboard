@@ -106,10 +106,15 @@ export async function POST(request: NextRequest) {
       include: { sentByAgent: true },
     });
 
-    // Update conversation
+    // Update conversation — aiMuted is set unconditionally: every message
+    // reaching this route is human-originated (a session agent, or a CRM
+    // staff reply forwarded via the service key), never the AI assistant
+    // itself (it sends directly via Meta + ai-assistant.ts, bypassing this
+    // route), so any send here means "a human is handling this" and the AI
+    // after-hours assistant should stop replying until manually resumed.
     const updatedConversation = await prisma.conversation.update({
       where: { id: conversationId },
-      data: { lastMessageAt: new Date() },
+      data: { lastMessageAt: new Date(), aiMuted: true },
       include: { contact: true, agent: true },
     });
 

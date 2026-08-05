@@ -1,6 +1,6 @@
 import { Message } from "@/types";
 import { format } from "date-fns";
-import { Check, CheckCheck, Clock, XCircle, FileText, Download } from "lucide-react";
+import { Check, CheckCheck, Clock, XCircle, FileText, Download, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MessageBubbleProps {
@@ -41,6 +41,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : "bg-gray-800 rounded-tl-sm"
         )}
       >
+        {message.sentByAi && (
+          <div className="flex items-center gap-1 mb-1 text-[10px] text-white/60">
+            <Bot className="w-3 h-3" /> AI assistant
+          </div>
+        )}
+
         {/* Media content */}
         {message.mediaType && message.mediaUrl && (
           <div className="mb-2">

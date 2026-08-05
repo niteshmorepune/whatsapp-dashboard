@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { broadcastToAgents, getConnectedAgentIds } from "@/lib/sse";
 import { sendPushToAgents } from "@/lib/webpush";
 import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { maybeReplyWithAi } from "@/lib/ai-assistant";
 import type { WhatsappNumber } from "@prisma/client";
 
 // GET: Meta webhook verification
@@ -242,6 +243,13 @@ async function handleInboundMessage(
       url: "/inbox",
     });
   }
+
+  // AI after-hours assistant — decides for itself (line's AiMode + business
+  // hours/holidays + this conversation's aiMuted flag) whether to reply.
+  // Fire-and-forget: never blocks or fails the Meta webhook response.
+  maybeReplyWithAi(whatsappNumber, conversation, contact).catch((error) =>
+    console.error("AI after-hours auto-reply failed:", error)
+  );
 }
 
 async function handleStatusUpdate(status: {

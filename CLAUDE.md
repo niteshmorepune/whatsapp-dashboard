@@ -45,7 +45,10 @@ META_PHONE_NUMBER_ID=
 META_WABA_ID=
 META_WEBHOOK_VERIFY_TOKEN=
 WADESK_SERVICE_KEY=
+ANTHROPIC_API_KEY=
 ```
+
+`ANTHROPIC_API_KEY` powers the AI after-hours assistant (see below) — if unset, `generateAiReply()` logs and returns `null`, so inbound messages are still recorded normally, just with no auto-reply.
 
 The seed script uses `-r dotenv/config` so `ts-node` loads `.env` before `PrismaClient` initialises — without this flag the seed will fail with "Environment variable not found: DATABASE_URL". The seed also requires `tsconfig.seed.json` (CommonJS module mode for ts-node compatibility).
 
@@ -109,6 +112,74 @@ This app can run more than one WhatsApp number side by side — e.g. one number 
 - **SSE/push fan-out is line-scoped too, not just the REST reads.** `broadcastToAgents(agentIds, ...)` (not `broadcastToAll`) is used for every conversation/message event — the agent ID list comes from `getAgentIdsWithNumberAccess(whatsappNumberId)`. This was a real gap caught while building this: `broadcastToAll` would have pushed a Marketing-line message preview into a Support-only agent's inbox in real time even though `GET /api/conversations` correctly filtered it out on load.
 - **Rollout order matters**: `scripts/backfill-whatsapp-numbers.ts` (`npm run db:backfill-numbers`) must run *after* the `add_whatsapp_numbers` migration and *before* the `require_whatsapp_number_on_conversation_broadcast` migration — it upserts a "Support" `WhatsappNumber` from the (legacy, single-number) `META_*` env vars, backfills every existing Conversation/Broadcast onto it, and grants every active agent access to it. Skipping this before the NOT-NULL migration will fail the migration on any existing data. Safe to re-run (idempotent).
 - Adding a second (or third) number going forward does **not** need a migration or a deploy — it's a row in `/numbers` (ADMIN only), then per-agent grants on the Agents page. `phoneNumberId`/`wabaId`/`accessToken` come from Meta's WhatsApp Manager → API Setup for that specific number.
+
+### AI after-hours assistant (added 2026-08-05)
+NEDS runs Meta ads whose Click-to-WhatsApp leads land on this app's Marketing
+line. Outside business hours (or on a holiday), no human agent is watching
+that line — this feature lets Claude hold the conversation instead of the
+lead going unanswered until the next business day.
+
+- **`WhatsappNumber.aiMode`** (`AiMode` enum: `AUTO` | `FORCE_ON` | `FORCE_OFF`)
+  is the per-line control, set on `/numbers` (ADMIN only). `AUTO` (the
+  default) defers entirely to `WhatsappNumber.businessHours` + the company-
+  wide `Holiday` calendar; `FORCE_ON`/`FORCE_OFF` are absolute overrides for a
+  short-staffed day or a "keep this human-only regardless of hours" period.
+  There is no separate on/off flag — `aiMode` alone is the single source of
+  truth for "is this line currently AI-live," computed by
+  `src/lib/business-hours.ts`'s `resolveAiLiveState()`.
+- **`WhatsappNumber.businessHours`** is a nullable `Json` column: a 7-entry
+  array (`{ day: 0-6, isOpen, openTime: "HH:mm", closeTime: "HH:mm" }`, `day`
+  matching JS `Date#getDay()`). `null` falls back to
+  `DEFAULT_BUSINESS_HOURS` (Mon–Sat 10:00–19:00, Sunday closed). Interpreted
+  in **Asia/Kolkata** via a hardcoded fixed +05:30 offset in
+  `business-hours.ts` (no timezone library — IST has no DST, and this is a
+  single-timezone India-only business) — do not reuse `new Date(...)`'s
+  local-timezone getters for this, they'd use the server's OS timezone, not
+  IST. **The exact same default array is duplicated in
+  `src/app/(dashboard)/numbers/page.tsx`** (a client component, so it can't
+  import `business-hours.ts` — that module pulls in the Prisma client). Keep
+  both in sync if the default ever changes.
+- **`Holiday`** — a plain, company-wide (not per-line) table (date + label),
+  managed on `/holidays` (ADMIN only). Every `AUTO`-mode line treats a
+  holiday date as closed, on top of its own weekly schedule.
+- **`FaqEntry`** — the AI's only allowed source of truth (question/answer/
+  isActive), managed on `/faq` (ADMIN only). `src/lib/ai-reply.ts`'s system
+  prompt explicitly forbids answering anything not covered here — same
+  "never fabricate specifics" rule used by every other AI feature across
+  this NEDS ecosystem (CRM, Drishti, SMDost). Separate from `QuickReply`
+  (agent-facing canned text a human inserts manually, not AI context).
+- **Trigger point**: `api/webhook`'s `handleInboundMessage()` calls
+  `maybeReplyWithAi()` (`src/lib/ai-assistant.ts`) fire-and-forget, after the
+  inbound message is saved and broadcast — never blocks or fails the Meta
+  webhook response. That function: skips if `Conversation.aiMuted`; skips if
+  `resolveAiLiveState()` says the line isn't AI-live right now; otherwise
+  loads the last 10 messages for context, calls `generateAiReply()`
+  (`src/lib/ai-reply.ts`, plain `fetch` to the Anthropic Messages API, model
+  `claude-haiku-4-5-20251001`, max 300 tokens — no SDK dependency added), and
+  if it returns non-null text, sends it via `sendTextMessage()` and persists
+  it as a normal outbound `Message` (`sentByAi: true`, `sentByAgentId: null`,
+  same "no agent identity, trusted actor" shape as a CRM-forwarded send) with
+  the usual SSE broadcast. Every step is wrapped so a Meta/Anthropic failure
+  here can never break inbound message handling — same "AI failure never
+  breaks the core workflow" convention used everywhere else in this NEDS
+  ecosystem.
+- **`Conversation.aiMuted`** — set to `true` unconditionally by `POST
+  /api/send` on every send (a session agent's own send, or a CRM-forwarded
+  staff reply via the service key — both are "a human is handling this,"
+  since the AI never calls `/api/send` itself, it sends directly through
+  `ai-assistant.ts`). Resumed via `PATCH /api/conversations/[id]` with
+  `{ aiMuted: false }` — a "Resume AI" button in `ThreadView`'s header,
+  shown whenever `aiMuted` is true. This is deliberately a **per-conversation**
+  mute, separate from the line-level `aiMode` — muting one lead's thread
+  because a human jumped in does not touch the line's overall AI schedule.
+- **`GET /api/conversations/[id]`** additionally computes and returns
+  `aiCurrentlyLive` (not a stored column — computed fresh from `aiMode` +
+  `businessHours` + the holiday calendar on every read) so `ThreadView` can
+  show "AI handling" without duplicating the schedule logic client-side.
+  `GET /api/whatsapp-numbers` does the same per-number for the `/numbers`
+  list. The conversations **list** endpoint (`GET /api/conversations`) does
+  NOT compute this — it's only needed on the single-conversation/number
+  detail views.
 
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.
