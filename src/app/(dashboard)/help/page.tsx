@@ -15,6 +15,7 @@ import {
   Bell,
   CheckCircle2,
   Phone,
+  Bot,
 } from "lucide-react";
 
 interface Section {
@@ -296,6 +297,56 @@ const SECTIONS: Section[] = [
           subscribed to this app in Meta (a one-time API call your developer runs), or messages on
           it will never arrive here even though the number is configured correctly.
         </Note>
+      </div>
+    ),
+  },
+  {
+    id: "ai-assistant",
+    icon: <Bot className="w-4 h-4" />,
+    title: "AI Assistant — Automatic after-hours replies",
+    color: "text-emerald-400",
+    content: (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-400">
+          A line can have Claude (an AI) automatically reply to incoming WhatsApp messages when nobody
+          on the team is available — outside business hours, or on a marked holiday. It only answers
+          from a fixed FAQ list, never invents prices or promises, and steps aside the moment a human
+          replies.
+        </p>
+
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 space-y-2">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">What it will and won&apos;t do</p>
+          <p className="text-sm text-gray-300">
+            It answers questions covered in the AI FAQ page (services, pricing ranges, hours, etc.) and
+            asks for the person&apos;s name and requirement if they haven&apos;t come up yet. It never quotes an
+            exact price, timeline, or commitment that isn&apos;t written in the FAQ — anything it can&apos;t
+            answer from the FAQ, it tells the person the team will follow up during business hours.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white">For Admins — setting it up on a line:</p>
+          <Step n={1} text="Numbers page: open a line and find the AI Assistant section. Choose Auto (replies only outside the hours below), Force On (replies to everything, all the time), or Force Off (never replies)." />
+          <Step n={2} text="In Auto mode, set the weekly business hours for that line — tick which days are open and set the open/close time for each. Anything outside these hours is treated as after-hours." />
+          <Step n={3} text="AI FAQ page: add the questions and answers the AI is allowed to use. This is the only source of truth it draws from — keep it accurate and up to date." />
+          <Step n={4} text="Holidays page: add company holidays (e.g. Diwali) — every Auto-mode line treats these dates as closed too, on top of its normal weekly hours." />
+        </div>
+
+        <div className="space-y-3 mt-2">
+          <p className="text-sm font-medium text-white">What everyone sees in the Inbox:</p>
+          <Step n={1} text="A conversation the AI is currently allowed to answer on shows an 'AI handling' badge in the chat header." />
+          <Step n={2} text="Messages the AI sent are marked with a small 🤖 AI assistant tag above the bubble, so it's always clear a reply wasn't typed by a teammate." />
+          <Step n={3} text="The moment anyone on the team sends a reply on that conversation, the AI automatically stops replying there — you'll see a 'Resume AI' button in the header if you want to hand it back to the AI later." />
+        </div>
+
+        <Note>
+          The Numbers page also shows a live &quot;AI live now / off now&quot; badge next to each line, so you
+          can check at a glance whether the assistant would currently answer on it.
+        </Note>
+        <Tip>
+          If the AI FAQ list is empty, the assistant still replies but can only ask for the person&apos;s
+          name/requirement and say the team will follow up — fill in the FAQ so it can actually be useful.
+        </Tip>
       </div>
     ),
   },
