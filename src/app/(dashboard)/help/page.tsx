@@ -69,8 +69,8 @@ const SECTIONS: Section[] = [
         </p>
         <div className="space-y-3">
           <Step n={1} text="Go to Templates in the sidebar and create a template (e.g. 'Diwali Wishes', 'Payment Reminder'). Write the message content and save it." />
-          <Step n={2} text="An Admin must approve the template inside the app — open the template, toggle it to Approved." />
-          <Step n={3} text="The same template must also be approved in Meta Business Manager (your WhatsApp account portal). The template name must match exactly. Meta review usually takes a few minutes to a few hours." />
+          <Step n={2} text="Submit the same message in Meta Business Manager (WhatsApp Manager → Message Templates) and wait for real approval there first — usually minutes to a few hours. This is the only place actual approval happens." />
+          <Step n={3} text="Once Meta approves it, an Admin opens the template in wadesk and toggles it to Approved. See the Templates section below for exactly what must match." />
           <Step n={4} text="Make sure the contacts you want to message are saved under Contacts with their correct phone numbers." />
           <Step n={5} text="Go to Broadcasts → click New Broadcast → select the approved template." />
           <Step n={6} text="Pick which line to send from (e.g. Support or Marketing) — only lines you have access to are offered. This decides which WhatsApp number the broadcast goes out on." />
@@ -137,17 +137,22 @@ const SECTIONS: Section[] = [
         <div className="space-y-3">
           <Step n={1} text="Go to Templates in the sidebar → click New Template." />
           <Step n={2} text="Give it a name (no spaces — use underscores e.g. 'payment_reminder'), write the content, and choose a category (Marketing, Utility, Authentication)." />
-          <Step n={3} text="Save the template. It will appear as Pending Approval." />
-          <Step n={4} text="An Admin approves it inside the app by editing the template and toggling Approved." />
-          <Step n={5} text="You also need to register and get the same template approved in Meta Business Manager. The name must match exactly." />
-          <Step n={6} text="Once approved on both sides, you can use it in chat (via the template button) or in Broadcasts." />
+          <Step n={3} text="Save the template. It will appear as Pending Approval in wadesk — this does NOT submit anything to Meta. Creating it here is purely local record-keeping." />
+          <Step n={4} text="Separately, submit the same message in Meta Business Manager (WhatsApp Manager → Message Templates) and wait for real approval there — usually minutes to a few hours. This is the only place actual approval happens." />
+          <Step n={5} text="Once Meta approves it, an Admin edits the wadesk template and toggles it to Approved. The name AND the language you pick must match exactly what Meta approved — e.g. if you submitted it as plain 'English' (en) rather than 'English (US)' (en_US), sends will fail otherwise. The toggle in wadesk is just a manual record for the team; it does not check anything with Meta or auto-sync approval status." />
+          <Step n={6} text="Once both are marked approved, you can use it in chat (via the template button) or in Broadcasts." />
         </div>
         <Tip>
           Keep template content simple and professional — Meta rejects templates that look like spam,
-          contain promotional language that is too aggressive, or ask for sensitive information.
+          contain promotional language that is too aggressive, or ask for sensitive information. A
+          fully generic message with no personalization (e.g. a static &quot;welcome&quot; text) can also get
+          flagged as Marketing instead of Utility — adding a name/detail variable like {"{{1}}"} usually
+          fixes this.
         </Tip>
         <Note>
-          Agents can use templates in chat but only Admins can approve them or delete them.
+          Agents can use templates in chat but only Admins can approve them or delete them. Toggling
+          Approved in wadesk before Meta has actually approved it will let staff try to send it — and
+          it will fail, since Meta is the real gate.
         </Note>
       </div>
     ),
