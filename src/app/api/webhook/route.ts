@@ -183,6 +183,12 @@ async function handleInboundMessage(
         // marketing-line message differently from a support-line one.
         whatsapp_number: whatsappNumber.businessNumber,
         whatsapp_line_label: whatsappNumber.label,
+        // Meta media ID (not a URL — the CRM resolves it via our own
+        // /api/media/[id] proxy, service-key-authed) so the CRM can fetch
+        // and store the actual file instead of only ever seeing the
+        // "[image]"/"[document]" placeholder text in `content`.
+        media_id: mediaUrl,
+        media_type: mediaType,
       }),
     }).catch(() => {}); // fire-and-forget — never block the Meta webhook response
   }
