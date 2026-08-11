@@ -11,14 +11,16 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { question, answer, isActive } = await request.json();
+  const { question, answer, isActive, whatsappNumberId } = await request.json();
   const entry = await prisma.faqEntry.update({
     where: { id: params.id },
     data: {
       ...(question !== undefined && { question: question.trim() }),
       ...(answer !== undefined && { answer: answer.trim() }),
       ...(typeof isActive === "boolean" && { isActive }),
+      ...(whatsappNumberId !== undefined && { whatsappNumberId: whatsappNumberId || null }),
     },
+    include: { whatsappNumber: { select: { id: true, label: true } } },
   });
   return NextResponse.json(entry);
 }

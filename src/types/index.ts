@@ -37,6 +37,8 @@ export interface FaqEntry {
   question: string;
   answer: string;
   isActive: boolean;
+  whatsappNumberId: string | null;
+  whatsappNumber: { id: string; label: string } | null;
   createdAt: string;
   updatedAt: string;
 }

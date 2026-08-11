@@ -1,52 +1,76 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { useSession } from "next-auth/react";
 import { Plus, Pencil, Trash2, Loader2, Bot, X, Check, EyeOff } from "lucide-react";
-import { FaqEntry } from "@/types";
+import { FaqEntry, WhatsappNumber } from "@/types";
 import { toast } from "sonner";
+
+const BOTH_LINES_VALUE = "";
 
 export default function FaqPage() {
   const { data: session } = useSession();
   const isAdmin = session?.user.role === "ADMIN";
 
   const [entries, setEntries] = useState<FaqEntry[]>([]);
+  const [numbers, setNumbers] = useState<WhatsappNumber[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ question: "", answer: "" });
+  const [form, setForm] = useState({ question: "", answer: "", whatsappNumberId: BOTH_LINES_VALUE });
   const [saving, setSaving] = useState(false);
+  const [filterId, setFilterId] = useState<string>("all");
 
   useEffect(() => {
-    axios.get("/api/faq").then((r) => setEntries(r.data)).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([axios.get("/api/faq"), axios.get("/api/whatsapp-numbers")])
+      .then(([faqRes, numbersRes]) => {
+        setEntries(faqRes.data);
+        setNumbers(numbersRes.data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
+
+  // "both" shows only unscoped entries; a specific line's filter shows that
+  // line's entries PLUS the Both-lines ones, since that's the AI's actual
+  // effective FAQ set for that line (see generateAiReply()'s OR filter).
+  const visibleEntries = useMemo(() => {
+    if (filterId === "all") return entries;
+    if (filterId === "both") return entries.filter((e) => !e.whatsappNumberId);
+    return entries.filter((e) => !e.whatsappNumberId || e.whatsappNumberId === filterId);
+  }, [entries, filterId]);
+
+  function scopeLabel(entry: FaqEntry): string {
+    return entry.whatsappNumber?.label ?? "Both lines";
+  }
 
   function startEdit(entry: FaqEntry) {
     setEditingId(entry.id);
-    setForm({ question: entry.question, answer: entry.answer });
+    setForm({ question: entry.question, answer: entry.answer, whatsappNumberId: entry.whatsappNumberId ?? BOTH_LINES_VALUE });
     setShowForm(false);
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setForm({ question: "", answer: "" });
+    setForm({ question: "", answer: "", whatsappNumberId: BOTH_LINES_VALUE });
   }
 
   async function handleSave() {
     if (!form.question.trim() || !form.answer.trim()) return;
     setSaving(true);
     try {
+      const payload = { question: form.question, answer: form.answer, whatsappNumberId: form.whatsappNumberId || null };
       if (editingId) {
-        const res = await axios.patch(`/api/faq/${editingId}`, form);
+        const res = await axios.patch(`/api/faq/${editingId}`, payload);
         setEntries((prev) => prev.map((e) => (e.id === editingId ? res.data : e)));
         setEditingId(null);
       } else {
-        const res = await axios.post("/api/faq", form);
+        const res = await axios.post("/api/faq", payload);
         setEntries((prev) => [...prev, res.data]);
         setShowForm(false);
       }
-      setForm({ question: "", answer: "" });
+      setForm({ question: "", answer: "", whatsappNumberId: BOTH_LINES_VALUE });
       toast.success(editingId ? "Updated" : "Created");
     } catch {
       toast.error("Failed to save");
@@ -96,10 +120,29 @@ export default function FaqPage() {
             </button>
           )}
         </div>
-        <p className="text-xs text-gray-500 mb-6">
+        <p className="text-xs text-gray-500 mb-4">
           The AI only answers questions covered here — it never invents pricing, timelines, or commitments. Anything
-          not covered gets a &quot;the team will follow up during business hours&quot; reply instead.
+          not covered gets a &quot;the team will follow up during business hours&quot; reply instead. Each entry
+          applies to Both lines, or you can scope it to one — the AI on a given line only ever sees entries scoped
+          to it plus the Both-lines entries.
         </p>
+
+        {numbers.length > 0 && (
+          <div className="flex items-center gap-2 mb-6">
+            <span className="text-xs text-gray-500">Show:</span>
+            <select
+              value={filterId}
+              onChange={(e) => setFilterId(e.target.value)}
+              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-green-500"
+            >
+              <option value="all">All entries</option>
+              <option value="both">Both-lines entries</option>
+              {numbers.map((n) => (
+                <option key={n.id} value={n.id}>{n.label} only (incl. Both-lines)</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {isAdmin && showForm && (
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-4">
@@ -114,10 +157,20 @@ export default function FaqPage() {
               onChange={(e) => setForm((p) => ({ ...p, answer: e.target.value }))}
               placeholder="Answer…"
               rows={3}
-              className="w-full mb-3 resize-none px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              className="w-full mb-2 resize-none px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500"
             />
+            <select
+              value={form.whatsappNumberId}
+              onChange={(e) => setForm((p) => ({ ...p, whatsappNumberId: e.target.value }))}
+              className="w-full mb-3 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+            >
+              <option value={BOTH_LINES_VALUE}>Both lines</option>
+              {numbers.map((n) => (
+                <option key={n.id} value={n.id}>{n.label} only</option>
+              ))}
+            </select>
             <div className="flex gap-2">
-              <button onClick={() => { setShowForm(false); setForm({ question: "", answer: "" }); }} className="flex-1 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition">
+              <button onClick={() => { setShowForm(false); setForm({ question: "", answer: "", whatsappNumberId: BOTH_LINES_VALUE }); }} className="flex-1 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition">
                 Cancel
               </button>
               <button onClick={handleSave} disabled={saving || !form.question.trim() || !form.answer.trim()} className="flex-1 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-lg transition flex items-center justify-center gap-1">
@@ -129,14 +182,14 @@ export default function FaqPage() {
 
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>
-        ) : entries.length === 0 ? (
+        ) : visibleEntries.length === 0 ? (
           <div className="text-center py-12 text-gray-600">
             <Bot className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No FAQ entries yet{isAdmin ? " — add one above" : ""}</p>
+            <p className="text-sm">No FAQ entries{filterId === "all" ? "" : " for this filter"} yet{isAdmin && filterId === "all" ? " — add one above" : ""}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {entries.map((entry) =>
+            {visibleEntries.map((entry) =>
               editingId === entry.id ? (
                 <div key={entry.id} className="bg-gray-800 border border-green-600/40 rounded-xl p-4">
                   <input
@@ -148,8 +201,18 @@ export default function FaqPage() {
                     value={form.answer}
                     onChange={(e) => setForm((p) => ({ ...p, answer: e.target.value }))}
                     rows={3}
-                    className="w-full mb-3 resize-none px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                    className="w-full mb-2 resize-none px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
+                  <select
+                    value={form.whatsappNumberId}
+                    onChange={(e) => setForm((p) => ({ ...p, whatsappNumberId: e.target.value }))}
+                    className="w-full mb-3 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                  >
+                    <option value={BOTH_LINES_VALUE}>Both lines</option>
+                    {numbers.map((n) => (
+                      <option key={n.id} value={n.id}>{n.label} only</option>
+                    ))}
+                  </select>
                   <div className="flex gap-2">
                     <button onClick={cancelEdit} className="flex-1 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition flex items-center justify-center gap-1">
                       <X className="w-3 h-3" /> Cancel
@@ -167,8 +230,11 @@ export default function FaqPage() {
                   }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium text-white mb-1">{entry.question}</p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${entry.whatsappNumberId ? "bg-green-500/10 text-green-400" : "bg-gray-700 text-gray-400"}`}>
+                        {scopeLabel(entry)}
+                      </span>
                       {!entry.isActive && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 flex items-center gap-1">
                           <EyeOff className="w-2.5 h-2.5" /> Disabled

@@ -94,6 +94,7 @@ model WhatsappNumber {
   conversations  Conversation[]
   broadcasts     Broadcast[]
   agentGrants    AgentWhatsappNumber[]
+  faqEntries     FaqEntry[]
 }
 
 // Company-wide holiday calendar (not per-line — a holiday is a holiday for
@@ -112,13 +113,24 @@ model Holiday {
 // in — it must never answer from outside this list (pricing, timelines,
 // commitments). Separate from QuickReply, which is agent-facing canned text
 // inserted manually, not AI context.
+//
+// whatsappNumberId is nullable: null = applies to every line (e.g. company
+// name/location, shared business hours); a set value scopes the entry to
+// that one line only (e.g. pricing questions on Marketing, ticket process
+// on Support). Deliberately different from Conversation/Broadcast's
+// required whatsappNumberId — a FAQ entry is content, not a line-bound
+// transaction, and some content is genuinely line-agnostic.
 model FaqEntry {
-  id        String   @id @default(cuid())
-  question  String   @db.Text
-  answer    String   @db.Text
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String          @id @default(cuid())
+  question         String          @db.Text
+  answer           String          @db.Text
+  isActive         Boolean         @default(true)
+  whatsappNumberId String?
+  whatsappNumber   WhatsappNumber? @relation(fields: [whatsappNumberId], references: [id], onDelete: Cascade)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([whatsappNumberId])
 }
 
 // One row per Anthropic API call the after-hours assistant makes. Logged for

@@ -22,17 +22,23 @@ interface RecentMessage {
 interface GenerateAiReplyParams {
   contactName: string | null;
   recentMessages: RecentMessage[];
+  whatsappNumberId: string;
+  whatsappNumberLabel: string;
 }
 
 /**
  * Drafts a WhatsApp reply grounded only in the admin-maintained FaqEntry
- * list. Never throws — every caller treats a null return as "say nothing,
+ * list, scoped to this line — entries with whatsappNumberId = null apply to
+ * every line, entries scoped to a specific line only ground replies on that
+ * line. Never throws — every caller treats a null return as "say nothing,
  * a human will pick this up," the same "AI failure never breaks the core
  * workflow" rule this ecosystem uses everywhere else.
  */
 export async function generateAiReply({
   contactName,
   recentMessages,
+  whatsappNumberId,
+  whatsappNumberLabel,
 }: GenerateAiReplyParams): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -42,14 +48,14 @@ export async function generateAiReply({
 
   try {
     const faqEntries = await prisma.faqEntry.findMany({
-      where: { isActive: true },
+      where: { isActive: true, OR: [{ whatsappNumberId: null }, { whatsappNumberId }] },
       orderBy: { createdAt: "asc" },
     });
     const faqBlock = faqEntries.length
       ? faqEntries.map((f, i) => `${i + 1}. Q: ${f.question}\n   A: ${f.answer}`).join("\n")
-      : "(no FAQ entries configured yet — ask admin to add some on the FAQ page)";
+      : "(no FAQ entries configured yet for this line — ask admin to add some on the FAQ page)";
 
-    const systemPrompt = `You are answering WhatsApp messages on behalf of Niranjan Enterprises Digital Solutions (NEDS), a digital solutions agency in Maharashtra, India. You are standing in outside business hours (or while AI assistance has been manually enabled) — no team member is available right now.
+    const systemPrompt = `You are answering WhatsApp messages on behalf of Niranjan Enterprises Digital Solutions (NEDS), a digital solutions agency in Maharashtra, India. You are answering on NEDS's ${whatsappNumberLabel} WhatsApp line — only use context appropriate to that line. You are standing in outside business hours (or while AI assistance has been manually enabled) — no team member is available right now.
 
 Rules:
 - Only answer questions about services, pricing, or hours using the FAQ list below. Never invent a price, timeline, discount, or commitment that isn't in the FAQ.

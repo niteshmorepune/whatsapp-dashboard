@@ -148,6 +148,17 @@ lead going unanswered until the next business day.
   "never fabricate specifics" rule used by every other AI feature across
   this NEDS ecosystem (CRM, Drishti, SMDost). Separate from `QuickReply`
   (agent-facing canned text a human inserts manually, not AI context).
+  **Per-line scoping (added 2026-08-11)**: `whatsappNumberId` is nullable
+  — `null` means the entry applies to every line (shared facts like company
+  location), a set value scopes it to that one `WhatsappNumber` only
+  (e.g. pricing questions on Marketing, ticket process on Support).
+  `generateAiReply()` now requires `whatsappNumberId`/`whatsappNumberLabel`
+  and queries `where: { isActive: true, OR: [{ whatsappNumberId: null },
+  { whatsappNumberId }] }` — a line only ever sees its own scoped entries
+  plus the both-lines ones, never another line's scoped content. The `/faq`
+  page's line picker is sourced from `GET /api/whatsapp-numbers`, not
+  hardcoded to "Support"/"Marketing", so adding a third line still needs no
+  code change here either.
 - **Trigger point**: `api/webhook`'s `handleInboundMessage()` calls
   `maybeReplyWithAi()` (`src/lib/ai-assistant.ts`) fire-and-forget, after the
   inbound message is saved and broadcast — never blocks or fails the Meta
@@ -381,9 +392,16 @@ docker compose up -d --build
 ```bash
 cd /opt/app/whatsapp-dashboard
 git pull
-docker compose exec app npx prisma migrate deploy
 docker compose up -d --build
+docker compose exec app npx prisma migrate deploy
 ```
+Rebuild **before** migrating, not after — this app has no bind mount (code
+is baked into the image at build time), so running `migrate deploy` first
+applies against the *old* container's stale migration set and can silently
+report "no pending migrations" instead of actually applying anything. Hit
+for real during the AI after-hours assistant build (2026-08-05) — recovered
+via `prisma migrate resolve --rolled-back <name>`, then rebuild, then
+migrate, in that order.
 
 **First-time setup on a fresh VPS:**
 ```bash

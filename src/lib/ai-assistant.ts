@@ -40,7 +40,12 @@ export async function maybeReplyWithAi(
     });
     recentMessages.reverse();
 
-    const reply = await generateAiReply({ contactName: contact.name, recentMessages });
+    const reply = await generateAiReply({
+      contactName: contact.name,
+      recentMessages,
+      whatsappNumberId: whatsappNumber.id,
+      whatsappNumberLabel: whatsappNumber.label,
+    });
     if (!reply) return;
 
     const metaConfig = toMetaConfig(whatsappNumber);
