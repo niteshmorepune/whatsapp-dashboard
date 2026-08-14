@@ -4,6 +4,7 @@ import { toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-number
 import { broadcastToAgents } from "@/lib/sse";
 import { generateAiReply } from "@/lib/ai-reply";
 import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/lib/business-hours";
+import { notifyCrm } from "@/lib/crm-notify";
 import type { WhatsappNumber, Conversation, Contact } from "@prisma/client";
 
 const CONTEXT_MESSAGE_COUNT = 10;
@@ -67,6 +68,17 @@ export async function maybeReplyWithAi(
       where: { id: conversation.id },
       data: { lastMessageAt: new Date() },
       include: { contact: true, agent: true },
+    });
+
+    notifyCrm({
+      phone: contact.phone,
+      contactName: contact.name,
+      message: reply,
+      conversationId: conversation.id,
+      whatsappNumber,
+      messageId: message.id,
+      direction: "outbound",
+      senderType: "ai",
     });
 
     const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);

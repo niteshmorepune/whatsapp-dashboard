@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
 import { sendTextMessage, sendTemplateMessage, sendMediaMessage } from "@/lib/meta";
 import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { notifyCrm } from "@/lib/crm-notify";
 
 const MEDIA_TYPES = ["image", "document", "audio", "video"] as const;
 type MediaType = (typeof MEDIA_TYPES)[number];
@@ -105,6 +106,26 @@ export async function POST(request: NextRequest) {
       },
       include: { sentByAgent: true },
     });
+
+    // Notify the CRM of a human agent's reply sent directly from this app
+    // (never for a CRM-originated send — the CRM already recorded that
+    // message itself the moment it sent it, so re-notifying it here would
+    // just be a redundant echo of its own data).
+    if (!isCrmRequest) {
+      notifyCrm({
+        phone: conversation.contact.phone,
+        contactName: conversation.contact.name,
+        message: content ?? "",
+        conversationId,
+        whatsappNumber: conversation.whatsappNumber,
+        mediaId: message.mediaUrl,
+        mediaType: message.mediaType,
+        messageId: message.id,
+        direction: "outbound",
+        senderType: "agent",
+        senderName: message.sentByAgent?.name ?? null,
+      });
+    }
 
     // Update conversation — aiMuted is set unconditionally: every message
     // reaching this route is human-originated (a session agent, or a CRM
