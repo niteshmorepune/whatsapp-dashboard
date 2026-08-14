@@ -234,6 +234,38 @@ not JSON, and failed to `JSON.parse`. Fixed by adding `api/ai/usage` to
 the matcher's negative-lookahead exclusion list alongside the other
 service-key routes.
 
+### CRM notification (`src/lib/crm-notify.ts`, added 2026-08-14)
+Notifies the NEDS CRM (`CRM_WEBHOOK_URL`/`CRM_WEBHOOK_TOKEN`, `POST` with
+`Authorization: Bearer`) of **every** WhatsApp message, both directions, so
+the CRM can build a full communication timeline on the matching Lead/Ticket.
+Previously this only fired on a conversation's opening inbound message —
+every later message (either direction) went unreported, which meant a
+CRM Ticket's thread silently missed everything after its first message, and
+a Lead never learned about a reply a staffer sent directly from this app
+(only a reply forwarded *from* the CRM ever reached here).
+
+Three call sites, all fire-and-forget (`.catch(() => {})`, never awaited,
+never blocks message delivery/persistence on this side):
+- `api/webhook/route.ts` — after every inbound customer message is saved
+  (moved from before the dedup/save step to after it, so it uses the
+  message's own `id` — not the Meta `metaMessageId` — as the CRM's
+  idempotency key). `direction: "inbound"`, `sender_type: "customer"`.
+- `api/send/route.ts` — after a session agent's own send.
+  `direction: "outbound"`, `sender_type: "agent"`, `sender_name` from
+  `message.sentByAgent.name`. **Skipped entirely** when the request was
+  itself CRM-originated (`isCrmRequest`, the `X-Service-Key` path) — the
+  CRM already recorded that message the moment it sent it, so notifying it
+  back would just be a redundant echo of its own data.
+- `ai-assistant.ts` — after the AI after-hours assistant sends its reply.
+  `direction: "outbound"`, `sender_type: "ai"`.
+
+The CRM's own receiving endpoint (`WhatsappWebhookController`) treats
+`message_id`/`direction`/`sender_type`/`sender_name` as optional, defaulting
+to exactly the shape this app sent before this change — so the two apps can
+be deployed in either order without a real-traffic gap; the CRM should still
+be deployed first regardless, since that's the intended rollout order (see
+the CRM's own PR for this feature).
+
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.
 

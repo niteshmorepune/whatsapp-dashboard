@@ -4,6 +4,7 @@ import { broadcastToAgents, getConnectedAgentIds } from "@/lib/sse";
 import { sendPushToAgents } from "@/lib/webpush";
 import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 import { maybeReplyWithAi } from "@/lib/ai-assistant";
+import { notifyCrm } from "@/lib/crm-notify";
 import type { WhatsappNumber } from "@prisma/client";
 
 // GET: Meta webhook verification
@@ -142,8 +143,6 @@ async function handleInboundMessage(
   });
 
   const windowExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const isNewConversation = !conversation;
-  const isReopened = !!conversation && conversation.status === "RESOLVED";
 
   if (!conversation) {
     conversation = await prisma.conversation.create({
@@ -164,33 +163,6 @@ async function handleInboundMessage(
         status: conversation.status === "RESOLVED" ? "OPEN" : conversation.status,
       },
     });
-  }
-
-  // Notify CRM on new or reopened conversations so it can create a support ticket.
-  if ((isNewConversation || isReopened) && process.env.CRM_WEBHOOK_URL && process.env.CRM_WEBHOOK_TOKEN) {
-    fetch(process.env.CRM_WEBHOOK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.CRM_WEBHOOK_TOKEN}`,
-      },
-      body: JSON.stringify({
-        phone,
-        contact_name: contactInfo?.profile?.name ?? null,
-        message: content,
-        conversation_id: conversation.id,
-        // Which of our numbers this arrived on — lets the CRM route a
-        // marketing-line message differently from a support-line one.
-        whatsapp_number: whatsappNumber.businessNumber,
-        whatsapp_line_label: whatsappNumber.label,
-        // Meta media ID (not a URL — the CRM resolves it via our own
-        // /api/media/[id] proxy, service-key-authed) so the CRM can fetch
-        // and store the actual file instead of only ever seeing the
-        // "[image]"/"[document]" placeholder text in `content`.
-        media_id: mediaUrl,
-        media_type: mediaType,
-      }),
-    }).catch(() => {}); // fire-and-forget — never block the Meta webhook response
   }
 
   // Skip non-meaningful message types (reactions, unsupported, system events)
@@ -214,6 +186,28 @@ async function handleInboundMessage(
       metaMessageId,
       status: "DELIVERED",
     },
+  });
+
+  // Notify the CRM of every real inbound message (not just a new/reopened
+  // conversation's opening one) so it can build a full timeline — see
+  // crm-notify.ts. Uses this message's own id, not metaMessageId, as the
+  // CRM-side idempotency key (stable regardless of how Meta's own id is
+  // formatted).
+  notifyCrm({
+    phone,
+    contactName: contactInfo?.profile?.name ?? null,
+    message: content,
+    conversationId: conversation.id,
+    whatsappNumber,
+    // Meta media ID (not a URL — the CRM resolves it via our own
+    // /api/media/[id] proxy, service-key-authed) so the CRM can fetch
+    // and store the actual file instead of only ever seeing the
+    // "[image]"/"[document]" placeholder text in `content`.
+    mediaId: mediaUrl,
+    mediaType,
+    messageId: message.id,
+    direction: "inbound",
+    senderType: "customer",
   });
 
   // Load full conversation for SSE broadcast
