@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { phone, businessNumber, templateName, variables, resolveOtherLines } = body;
+    const { phone, businessNumber, templateName, variables, buttonUrlParam, resolveOtherLines } = body;
 
     if (!phone || !businessNumber || !templateName) {
       return NextResponse.json(
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // Optional {{1}}, {{2}}, ... body variables, e.g. ["Ravi"] for a
     // template body containing "Hi {{1}},". Omit entirely for a template
     // with no variables.
-    const components =
+    const components: unknown[] =
       Array.isArray(variables) && variables.length > 0
         ? [
             {
@@ -50,6 +50,20 @@ export async function POST(request: NextRequest) {
             },
           ]
         : [];
+
+    // Optional value for a template's single CTA button that uses a
+    // "Dynamic" website URL (Meta appends this as that button's own {{1}}
+    // to the button's configured base URL) — e.g. a lead id. Only supports
+    // one such button, at index 0, since that's the only shape any
+    // template uses today (see visibility_audit_recovery_checkout/landing).
+    if (buttonUrlParam) {
+      components.push({
+        type: "button",
+        sub_type: "url",
+        index: "0",
+        parameters: [{ type: "text", text: String(buttonUrlParam) }],
+      });
+    }
 
     const whatsappNumber = await prisma.whatsappNumber.findUnique({ where: { businessNumber } });
     if (!whatsappNumber) {
