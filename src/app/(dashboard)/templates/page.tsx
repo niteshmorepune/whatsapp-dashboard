@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, RefreshCw } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Template } from "@/types";
 import { TemplateList } from "@/components/templates/TemplateList";
@@ -15,8 +15,28 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const isAdmin = session?.user?.role === "ADMIN";
+
+  async function handleSyncFromMeta() {
+    setSyncing(true);
+    try {
+      const res = await axios.post("/api/templates/sync");
+      const { created, updated, errors } = res.data;
+      const refreshed = await axios.get("/api/templates");
+      setTemplates(refreshed.data);
+      if (errors?.length) {
+        toast.error(`Synced with errors: ${errors.join("; ")}`);
+      } else {
+        toast.success(`Synced from Meta — ${created} new, ${updated} updated`);
+      }
+    } catch {
+      toast.error("Failed to sync from Meta");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   useEffect(() => {
     axios
@@ -83,13 +103,25 @@ export default function TemplatesPage() {
             Manage approved WhatsApp message templates
           </p>
         </div>
-        <button
-          onClick={handleCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition"
-        >
-          <Plus className="w-4 h-4" />
-          New Template
-        </button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={handleSyncFromMeta}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+              Sync from Meta
+            </button>
+          )}
+          <button
+            onClick={handleCreate}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition"
+          >
+            <Plus className="w-4 h-4" />
+            New Template
+          </button>
+        </div>
       </div>
 
       {/* Content */}

@@ -96,3 +96,38 @@ export async function markMessageRead(
 export function metaClientFor(config: MetaNumberConfig) {
   return clientFor(config);
 }
+
+export interface MetaTemplateSummary {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language: string;
+  components: Array<{ type: string; text?: string }>;
+}
+
+/**
+ * Lists every template (any status — APPROVED/PENDING/REJECTED/IN_APPEAL)
+ * registered on a WABA, for syncing into our own Template table so a
+ * Meta-approved template doesn't also need re-entering here by hand. Paginates
+ * via Meta's own `paging.next` (already a complete absolute URL).
+ */
+export async function listMessageTemplates(
+  accessToken: string,
+  wabaId: string
+): Promise<MetaTemplateSummary[]> {
+  const templates: MetaTemplateSummary[] = [];
+  let nextUrl: string | null =
+    `${META_API_BASE}/${wabaId}/message_templates?fields=name,status,category,language,components&limit=100`;
+
+  while (nextUrl) {
+    const response: { data: { data?: MetaTemplateSummary[]; paging?: { next?: string } } } =
+      await axios.get(nextUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    templates.push(...(response.data.data ?? []));
+    nextUrl = response.data.paging?.next ?? null;
+  }
+
+  return templates;
+}
