@@ -124,11 +124,24 @@ export async function POST(request: NextRequest) {
       components
     );
 
+    // Render the real body text (variables substituted) for the inbox
+    // history, instead of a bare "[Template: name]" placeholder — falls
+    // back to the placeholder only if this template has no synced body
+    // (e.g. never run through Templates → Sync from Meta).
+    const renderedContent = template.content
+      ? Array.isArray(variables) && variables.length > 0
+        ? variables.reduce(
+            (text: string, v: string, i: number) => text.replaceAll(`{{${i + 1}}}`, v),
+            template.content
+          )
+        : template.content
+      : `[Template: ${template.name}]`;
+
     const message = await prisma.message.create({
       data: {
         conversationId: conversation.id,
         direction: "OUTBOUND",
-        content: `[Template: ${template.name}]`,
+        content: renderedContent,
         metaMessageId: messageId ?? null,
         status: "SENT",
         sentByAgentId: null,
