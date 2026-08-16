@@ -139,8 +139,8 @@ const SECTIONS: Section[] = [
           <Step n={2} text="Give it a name (no spaces — use underscores e.g. 'payment_reminder'), write the content, and choose a category (Marketing, Utility, Authentication)." />
           <Step n={3} text="Save the template. It will appear as Pending Approval in wadesk — this does NOT submit anything to Meta. Creating it here is purely local record-keeping." />
           <Step n={4} text="Separately, submit the same message in Meta Business Manager (WhatsApp Manager → Message Templates) and wait for real approval there — usually minutes to a few hours. This is the only place actual approval happens." />
-          <Step n={5} text="Once Meta approves it, an Admin edits the wadesk template and toggles it to Approved. The name AND the language you pick must match exactly what Meta approved — e.g. if you submitted it as plain 'English' (en) rather than 'English (US)' (en_US), sends will fail otherwise. The toggle in wadesk is just a manual record for the team; it does not check anything with Meta or auto-sync approval status." />
-          <Step n={6} text="Once both are marked approved, you can use it in chat (via the template button) or in Broadcasts." />
+          <Step n={5} text="Once Meta approves it, click Sync from Meta (top of the Templates page, Admin only). This pulls every template's real body text, category, and approval status straight from Meta for every connected line — no manual toggling or re-typing needed, and it corrects itself if a template is later edited or revoked in Meta too." />
+          <Step n={6} text="Once it shows Approved, you can use it in chat (via the template button) or in Broadcasts." />
         </div>
         <Tip>
           Keep template content simple and professional — Meta rejects templates that look like spam,
@@ -150,10 +150,18 @@ const SECTIONS: Section[] = [
           fixes this.
         </Tip>
         <Note>
-          Agents can use templates in chat but only Admins can approve them or delete them. Toggling
-          Approved in wadesk before Meta has actually approved it will let staff try to send it — and
-          it will fail, since Meta is the real gate.
+          Agents can use templates in chat but only Admins can sync, approve, or delete them. You can
+          still manually create a template and flip its Approved toggle by hand without ever syncing —
+          but if you do, that&apos;s on your own word, not Meta&apos;s: sending it before Meta has actually
+          approved it will fail, since Meta is the real gate either way.
         </Note>
+        <Tip>
+          A template sent automatically by another system (like the CRM&apos;s payment confirmations or
+          WhatsApp recovery nudges) shows its real message text in the Inbox conversation, the same as
+          any other message — not a bare &quot;[Template: name]&quot; placeholder. This only works once the
+          template has been synced or created here with its real body text; an approved-but-never-synced
+          template still sends correctly, it just shows the placeholder in the history instead.
+        </Tip>
       </div>
     ),
   },
