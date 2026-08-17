@@ -17,6 +17,12 @@ interface Attachment {
   mediaType: MediaType;
 }
 
+/** Highest {{n}} placeholder index in a template body — 0 if it has none. */
+function templateParamCount(content: string): number {
+  const numbers = Array.from(content.matchAll(/\{\{(\d+)\}\}/g)).map((m) => parseInt(m[1], 10));
+  return numbers.length > 0 ? Math.max(...numbers) : 0;
+}
+
 function detectMediaType(file: File): MediaType {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("audio/")) return "audio";
@@ -52,6 +58,8 @@ export function MessageInput({
   const [showEmoji, setShowEmoji] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [variableTemplate, setVariableTemplate] = useState<Template | null>(null);
+  const [variableValues, setVariableValues] = useState<string[]>([]);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -164,15 +172,37 @@ export function MessageInput({
     }
   }
 
-  async function sendTemplate(template: Template) {
+  // Opens the variable-entry modal for a template with {{n}} placeholders;
+  // sends immediately for one that has none. Meta rejects a template send
+  // whose parameter count doesn't match what it was approved with
+  // (#132000), so a parameterized template can never be sent with zero
+  // components the way this used to work.
+  function selectTemplate(template: Template) {
+    const paramCount = templateParamCount(template.content);
+    if (paramCount === 0) {
+      sendTemplate(template, []);
+      return;
+    }
+    setVariableTemplate(template);
+    setVariableValues(Array(paramCount).fill(""));
+    setShowTemplates(false);
+  }
+
+  async function sendTemplate(template: Template, variables: string[]) {
     setSending(true);
     setShowTemplates(false);
+    setVariableTemplate(null);
     try {
+      const renderedContent = variables.reduce(
+        (text, v, i) => text.replaceAll(`{{${i + 1}}}`, v),
+        template.content
+      );
       await axios.post("/api/send", {
         conversationId,
-        content: template.content,
+        content: renderedContent,
         type: "template",
         templateId: template.id,
+        variables,
       });
       onMessageSent();
       toast.success(`Template "${template.name}" sent`);
@@ -378,7 +408,7 @@ export function MessageInput({
             {templates.map((t) => (
               <button
                 key={t.id}
-                onClick={() => sendTemplate(t)}
+                onClick={() => selectTemplate(t)}
                 disabled={sending}
                 className="w-full text-left p-4 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-green-600 rounded-xl transition group"
               >
@@ -395,6 +425,49 @@ export function MessageInput({
             ))}
           </div>
         )}
+      </Modal>
+
+      {/* Template variable entry — shown only for a template with {{n}} placeholders */}
+      <Modal
+        isOpen={!!variableTemplate}
+        onClose={() => setVariableTemplate(null)}
+        title={variableTemplate ? `Fill in "${variableTemplate.name}"` : ""}
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400 whitespace-pre-line bg-gray-800 border border-gray-700 rounded-lg p-3">
+            {variableTemplate?.content}
+          </p>
+          {variableValues.map((value, i) => (
+            <div key={i}>
+              <label className="block text-sm text-gray-400 mb-1">{`Value for {{${i + 1}}}`}</label>
+              <input
+                value={value}
+                onChange={(e) =>
+                  setVariableValues((prev) =>
+                    prev.map((v, idx) => (idx === i ? e.target.value : v))
+                  )
+                }
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+              />
+            </div>
+          ))}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => setVariableTemplate(null)}
+              className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => variableTemplate && sendTemplate(variableTemplate, variableValues)}
+              disabled={sending || variableValues.some((v) => !v.trim())}
+              className="flex-1 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-800 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"
+            >
+              {sending && <Loader2 className="w-4 h-4 animate-spin" />}
+              Send
+            </button>
+          </div>
+        </div>
       </Modal>
     </>
   );

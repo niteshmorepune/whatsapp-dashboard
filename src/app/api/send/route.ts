@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { conversationId, content, type = "text", templateId, mediaId, filename } = body;
+    const { conversationId, content, type = "text", templateId, mediaId, filename, variables } = body;
 
     if (!conversationId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -79,7 +79,26 @@ export async function POST(request: NextRequest) {
       if (!template) {
         return NextResponse.json({ error: "Template not found" }, { status: 404 });
       }
-      const result = await sendTemplateMessage(metaConfig, phone, template.name, template.language);
+      // Optional {{1}}, {{2}}, ... body variables — Meta rejects a send
+      // whose parameter count doesn't match what the template was approved
+      // with (#132000), so a parameterized template must never be sent
+      // with an empty components array.
+      const components: unknown[] =
+        Array.isArray(variables) && variables.length > 0
+          ? [
+              {
+                type: "body",
+                parameters: variables.map((v: string) => ({ type: "text", text: v })),
+              },
+            ]
+          : [];
+      const result = await sendTemplateMessage(
+        metaConfig,
+        phone,
+        template.name,
+        template.language,
+        components
+      );
       metaMessageId = result.messageId ?? null;
     } else if (MEDIA_TYPES.includes(type as MediaType)) {
       if (!mediaId) {
