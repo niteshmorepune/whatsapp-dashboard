@@ -28,6 +28,7 @@ export function TemplateEditor({
     content: template?.content ?? "",
     category: template?.category ?? "UTILITY",
     language: template?.language ?? "en",
+    hasButtonParam: template?.hasButtonParam ?? false,
     metaTemplateId: template?.metaTemplateId ?? "",
   });
   const [saving, setSaving] = useState(false);
@@ -51,6 +52,7 @@ export function TemplateEditor({
           content: form.content,
           category: form.category,
           language: form.language,
+          hasButtonParam: form.hasButtonParam,
           metaTemplateId: form.metaTemplateId || null,
         });
       } else {
@@ -59,6 +61,7 @@ export function TemplateEditor({
           content: form.content,
           category: form.category,
           language: form.language,
+          hasButtonParam: form.hasButtonParam,
           metaTemplateId: form.metaTemplateId || null,
         });
       }
@@ -144,6 +147,16 @@ export function TemplateEditor({
             className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500 resize-none"
           />
         </div>
+
+        <label className="flex items-center gap-2 text-sm text-gray-400">
+          <input
+            type="checkbox"
+            checked={form.hasButtonParam}
+            onChange={(e) => setForm((p) => ({ ...p, hasButtonParam: e.target.checked }))}
+            className="accent-green-500"
+          />
+          Has a Dynamic URL button (needs a link value at send time)
+        </label>
 
         <div>
           <label className="block text-sm text-gray-400 mb-1">

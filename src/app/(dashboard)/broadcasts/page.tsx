@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { Plus, Loader2, Radio, CheckCircle2, XCircle, Clock, Users, ChevronRight, X } from "lucide-react";
 import { Broadcast, BroadcastStatus, Template, Contact, WhatsappNumber } from "@/types";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime, templateParamCount } from "@/lib/utils";
 import { toast } from "sonner";
 import { Modal } from "@/components/ui/Modal";
 
@@ -146,6 +146,8 @@ function CreateBroadcastModal({
   const [whatsappNumberId, setWhatsappNumberId] = useState("");
   const [name, setName] = useState("");
   const [tagFilter, setTagFilter] = useState("");
+  const [variableValues, setVariableValues] = useState<string[]>([]);
+  const [buttonUrlValue, setButtonUrlValue] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -155,6 +157,8 @@ function CreateBroadcastModal({
     setSelectedIds(new Set());
     setName("");
     setTagFilter("");
+    setVariableValues([]);
+    setButtonUrlValue("");
     axios.get("/api/templates").then((r) => setTemplates(r.data.filter((t: Template) => t.isApproved))).catch(() => {});
     axios.get("/api/contacts?limit=500").then((r) => setContacts(r.data.contacts ?? [])).catch(() => {});
     axios
@@ -182,8 +186,13 @@ function CreateBroadcastModal({
     }
   }
 
+  const paramCount = selectedTemplate ? templateParamCount(selectedTemplate.content) : 0;
+  const needsButtonParam = selectedTemplate?.hasButtonParam ?? false;
+  const missingParams =
+    variableValues.some((v) => !v.trim()) || (needsButtonParam && !buttonUrlValue.trim());
+
   async function handleCreate() {
-    if (!selectedTemplate || selectedIds.size === 0 || !whatsappNumberId) return;
+    if (!selectedTemplate || selectedIds.size === 0 || !whatsappNumberId || missingParams) return;
     setSaving(true);
     try {
       const res = await axios.post("/api/broadcasts", {
@@ -191,11 +200,14 @@ function CreateBroadcastModal({
         templateId: selectedTemplate.id,
         contactIds: Array.from(selectedIds),
         whatsappNumberId,
+        variables: paramCount > 0 ? variableValues : undefined,
+        buttonUrlParam: needsButtonParam ? buttonUrlValue : undefined,
       });
       onCreate(res.data);
       toast.success(`Broadcast created with ${selectedIds.size} recipients`);
-    } catch {
-      toast.error("Failed to create broadcast");
+    } catch (err) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error ?? "Failed to create broadcast" : "Failed to create broadcast";
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -230,7 +242,13 @@ function CreateBroadcastModal({
             )}
           </div>
           <button
-            onClick={() => setStep("contacts")}
+            onClick={() => {
+              if (selectedTemplate) {
+                setVariableValues(Array(templateParamCount(selectedTemplate.content)).fill(""));
+              }
+              setButtonUrlValue("");
+              setStep("contacts");
+            }}
             disabled={!selectedTemplate}
             className="w-full py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm rounded-xl transition"
           >
@@ -242,6 +260,32 @@ function CreateBroadcastModal({
           <button onClick={() => setStep("template")} className="text-xs text-gray-500 hover:text-white mb-3 flex items-center gap-1">
             <X className="w-3 h-3" /> Back
           </button>
+          {(variableValues.length > 0 || needsButtonParam) && (
+            <div className="space-y-2 mb-3 p-3 bg-gray-800/60 border border-gray-700 rounded-lg">
+              <p className="text-xs text-gray-500">
+                Same values are sent to every recipient in this broadcast
+              </p>
+              {variableValues.map((value, i) => (
+                <input
+                  key={i}
+                  value={value}
+                  onChange={(e) =>
+                    setVariableValues((prev) => prev.map((v, idx) => (idx === i ? e.target.value : v)))
+                  }
+                  placeholder={`Value for {{${i + 1}}}`}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              ))}
+              {needsButtonParam && (
+                <input
+                  value={buttonUrlValue}
+                  onChange={(e) => setButtonUrlValue(e.target.value)}
+                  placeholder="Button link value"
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              )}
+            </div>
+          )}
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -300,7 +344,7 @@ function CreateBroadcastModal({
           </div>
           <button
             onClick={handleCreate}
-            disabled={saving || selectedIds.size === 0 || !whatsappNumberId}
+            disabled={saving || selectedIds.size === 0 || !whatsappNumberId || missingParams}
             className="w-full py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm rounded-xl transition flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

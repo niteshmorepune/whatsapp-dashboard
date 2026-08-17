@@ -122,7 +122,25 @@ export interface MetaTemplateSummary {
   status: string;
   category: string;
   language: string;
-  components: Array<{ type: string; text?: string }>;
+  components: Array<{
+    type: string;
+    text?: string;
+    buttons?: Array<{ type: string; text?: string; url?: string }>;
+  }>;
+}
+
+/**
+ * True when this template has a URL button whose destination is Dynamic
+ * (Meta represents that as a `{{1}}` placeholder inside the button's `url`,
+ * appended by the caller at send time — see /api/send-template's
+ * `buttonUrlParam`). A template with a Static URL button has no such
+ * placeholder and needs no parameter at all.
+ */
+export function templateHasButtonParam(components: MetaTemplateSummary["components"]): boolean {
+  const buttonsComponent = components.find((c) => c.type === "BUTTONS");
+  return (
+    buttonsComponent?.buttons?.some((b) => b.type === "URL" && b.url?.includes("{{1}}")) ?? false
+  );
 }
 
 /**

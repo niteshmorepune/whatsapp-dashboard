@@ -53,3 +53,14 @@ export function truncate(str: string, length: number): string {
   if (str.length <= length) return str;
   return str.slice(0, length) + "…";
 }
+
+/** Highest {{n}} placeholder index in a template body — 0 if it has none. */
+export function templateParamCount(content: string): number {
+  const numbers = Array.from(content.matchAll(/\{\{(\d+)\}\}/g)).map((m) => parseInt(m[1], 10));
+  return numbers.length > 0 ? Math.max(...numbers) : 0;
+}
+
+/** Substitutes {{1}}, {{2}}, ... in a template body with the given values, in order. */
+export function renderTemplateContent(content: string, variables: string[]): string {
+  return variables.reduce((text, v, i) => text.replaceAll(`{{${i + 1}}}`, v), content);
+}

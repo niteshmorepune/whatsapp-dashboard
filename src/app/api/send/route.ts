@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { conversationId, content, type = "text", templateId, mediaId, filename, variables } = body;
+    const { conversationId, content, type = "text", templateId, mediaId, filename, variables, buttonUrlParam } = body;
 
     if (!conversationId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -80,6 +80,12 @@ export async function POST(request: NextRequest) {
       if (!template) {
         return NextResponse.json({ error: "Template not found" }, { status: 404 });
       }
+      if (template.hasButtonParam && !buttonUrlParam) {
+        return NextResponse.json(
+          { error: "This template needs a button link value" },
+          { status: 400 }
+        );
+      }
       // Optional {{1}}, {{2}}, ... body variables — Meta rejects a send
       // whose parameter count doesn't match what the template was approved
       // with (#132000), so a parameterized template must never be sent
@@ -93,6 +99,18 @@ export async function POST(request: NextRequest) {
               },
             ]
           : [];
+      // A Dynamic-URL button needs its own {{1}} filled in as a *button*
+      // component, separate from any body variables above — Meta returns
+      // (#131008) Required parameter is missing if a template that has one
+      // is sent without it, same shape /api/send-template already used.
+      if (template.hasButtonParam && buttonUrlParam) {
+        components.push({
+          type: "button",
+          sub_type: "url",
+          index: "0",
+          parameters: [{ type: "text", text: String(buttonUrlParam) }],
+        });
+      }
       const result = await sendTemplateMessage(
         metaConfig,
         phone,

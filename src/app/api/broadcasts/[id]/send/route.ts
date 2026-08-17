@@ -42,6 +42,23 @@ export async function POST(
     data: { status: "SENDING" },
   });
 
+  // Same rendered components for every recipient — a broadcast sends one
+  // message to a list, not a personalized one per contact. Built once
+  // outside the loop rather than per-recipient.
+  const bodyVariables = Array.isArray(broadcast.variables) ? (broadcast.variables as string[]) : [];
+  const components: unknown[] =
+    bodyVariables.length > 0
+      ? [{ type: "body", parameters: bodyVariables.map((v) => ({ type: "text", text: v })) }]
+      : [];
+  if (broadcast.template.hasButtonParam && broadcast.buttonUrlParam) {
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [{ type: "text", text: broadcast.buttonUrlParam }],
+    });
+  }
+
   // Fire-and-forget the actual sending so the response returns immediately
   (async () => {
     let sent = 0;
@@ -63,7 +80,8 @@ export async function POST(
           metaConfig,
           recipient.contact.phone,
           broadcast.template.name,
-          broadcast.template.language
+          broadcast.template.language,
+          components
         );
         await prisma.broadcastRecipient.update({
           where: { id: recipient.id },

@@ -107,6 +107,7 @@ export interface Template {
   content: string;
   category: string;
   language: string;
+  hasButtonParam: boolean;
   isApproved: boolean;
   metaTemplateId: string | null;
   createdAt: string;
@@ -139,6 +140,8 @@ export interface Broadcast {
   templateId: string;
   agentId: string;
   whatsappNumberId: string;
+  variables?: string[] | null;
+  buttonUrlParam?: string | null;
   status: BroadcastStatus;
   sentCount: number;
   failedCount: number;

@@ -379,10 +379,10 @@ Database is **MySQL**. Key models and their non-obvious fields:
 - `AgentWhatsappNumber` — pivot, `@@unique([agentId, whatsappNumberId])`
 - `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`, `whatsappNumberId` (required — which line this thread is on)
 - `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl` (Meta media ID for both inbound and outbound), `mediaType` (image/document/audio/video/null), `metaMessageId` (unique, used for dedup)
-- `Template` — `isApproved`, `metaTemplateId`, `category`, `language` (default `"en"`, added 2026-08-17 — must match the exact language Meta approved this specific template under, e.g. `"en_US"` for some). Approved per-WABA in Meta, not per-number, so one approval covers every `WhatsappNumber` on that WABA.
+- `Template` — `isApproved`, `metaTemplateId`, `category`, `language` (default `"en"`, added 2026-08-17 — must match the exact language Meta approved this specific template under, e.g. `"en_US"` for some), `hasButtonParam` (default `false`, added 2026-08-17 — true when the template has a URL button whose `url` contains `{{1}}`, i.e. a *Dynamic* URL button rather than a *Static* one; `content` only ever holds the BODY component's text, so this is the only signal that a button also needs a value at send time). Both are populated by Templates → Sync from Meta (`templateHasButtonParam()` in `src/lib/meta.ts`); a manually created/edited template sets them via its own form fields instead. Approved per-WABA in Meta, not per-number, so one approval covers every `WhatsappNumber` on that WABA.
 - `QuickReply` — `name`, `content`
 - `ContactNote` — `contactId`, `agentId` (author), `content`; cascades on contact delete
-- `Broadcast` — `status: DRAFT | SENDING | COMPLETED | FAILED`, `sentCount`, `failedCount`, `templateId`, `agentId`, `whatsappNumberId` (required — which line the recipients are messaged from)
+- `Broadcast` — `status: DRAFT | SENDING | COMPLETED | FAILED`, `sentCount`, `failedCount`, `templateId`, `agentId`, `whatsappNumberId` (required — which line the recipients are messaged from), `variables`/`buttonUrlParam` (both added 2026-08-17, nullable — the same body/button parameter values applied to every recipient in the broadcast, collected up front at creation time since Meta rejects a parameterized template sent with the wrong component shape)
 - `BroadcastRecipient` — `status: PENDING | SENT | FAILED`, `metaMessageId`; cascades on broadcast delete
 
 ### Utilities (`src/lib/utils.ts`)

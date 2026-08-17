@@ -12,7 +12,7 @@ export async function PATCH(
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { name, content, category, language, isApproved, metaTemplateId } = body;
+    const { name, content, category, language, hasButtonParam, isApproved, metaTemplateId } = body;
 
     if (isApproved !== undefined && session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Only admins can approve templates" }, { status: 403 });
@@ -25,6 +25,7 @@ export async function PATCH(
         ...(content !== undefined && { content }),
         ...(category !== undefined && { category }),
         ...(language !== undefined && { language }),
+        ...(hasButtonParam !== undefined && { hasButtonParam }),
         ...(isApproved !== undefined && { isApproved }),
         ...(metaTemplateId !== undefined && { metaTemplateId }),
       },

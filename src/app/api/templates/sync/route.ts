@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { listMessageTemplates } from "@/lib/meta";
+import { listMessageTemplates, templateHasButtonParam } from "@/lib/meta";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +51,7 @@ export async function POST() {
           if (mt.language !== "en" && mt.language !== "en_US") continue;
 
           const body = mt.components.find((c) => c.type === "BODY");
+          const hasButtonParam = templateHasButtonParam(mt.components);
           const existing = await prisma.template.findUnique({ where: { name: mt.name } });
 
           await prisma.template.upsert({
@@ -60,6 +61,7 @@ export async function POST() {
               content: body?.text ?? "",
               category: mt.category,
               language: mt.language,
+              hasButtonParam,
               isApproved: mt.status === "APPROVED",
               metaTemplateId: mt.id,
             },
@@ -67,6 +69,7 @@ export async function POST() {
               content: body?.text ?? "",
               category: mt.category,
               language: mt.language,
+              hasButtonParam,
               isApproved: mt.status === "APPROVED",
               metaTemplateId: mt.id,
             },

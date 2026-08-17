@@ -5,7 +5,7 @@ import axios from "axios";
 import { Send, Smile, FileText, Loader2, Paperclip, X, Image as ImageIcon, Headphones, Video, Zap } from "lucide-react";
 import { Template, QuickReply } from "@/types";
 import { Modal } from "@/components/ui/Modal";
-import { isWindowExpired } from "@/lib/utils";
+import { isWindowExpired, templateParamCount, renderTemplateContent } from "@/lib/utils";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 
@@ -15,12 +15,6 @@ interface Attachment {
   file: File;
   preview: string | null;
   mediaType: MediaType;
-}
-
-/** Highest {{n}} placeholder index in a template body — 0 if it has none. */
-function templateParamCount(content: string): number {
-  const numbers = Array.from(content.matchAll(/\{\{(\d+)\}\}/g)).map((m) => parseInt(m[1], 10));
-  return numbers.length > 0 ? Math.max(...numbers) : 0;
 }
 
 function detectMediaType(file: File): MediaType {
@@ -60,6 +54,7 @@ export function MessageInput({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [variableTemplate, setVariableTemplate] = useState<Template | null>(null);
   const [variableValues, setVariableValues] = useState<string[]>([]);
+  const [buttonUrlValue, setButtonUrlValue] = useState("");
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -172,37 +167,37 @@ export function MessageInput({
     }
   }
 
-  // Opens the variable-entry modal for a template with {{n}} placeholders;
-  // sends immediately for one that has none. Meta rejects a template send
-  // whose parameter count doesn't match what it was approved with
-  // (#132000), so a parameterized template can never be sent with zero
-  // components the way this used to work.
+  // Opens the variable-entry modal for a template with {{n}} placeholders
+  // and/or a Dynamic-URL button; sends immediately for one that needs
+  // neither. Meta rejects a template send whose parameter count doesn't
+  // match what it was approved with (#132000 for a body mismatch, #131008
+  // for a missing button parameter), so a parameterized template can never
+  // be sent with an empty components array.
   function selectTemplate(template: Template) {
     const paramCount = templateParamCount(template.content);
-    if (paramCount === 0) {
-      sendTemplate(template, []);
+    if (paramCount === 0 && !template.hasButtonParam) {
+      sendTemplate(template, [], "");
       return;
     }
     setVariableTemplate(template);
     setVariableValues(Array(paramCount).fill(""));
+    setButtonUrlValue("");
     setShowTemplates(false);
   }
 
-  async function sendTemplate(template: Template, variables: string[]) {
+  async function sendTemplate(template: Template, variables: string[], buttonUrlParam: string) {
     setSending(true);
     setShowTemplates(false);
     setVariableTemplate(null);
     try {
-      const renderedContent = variables.reduce(
-        (text, v, i) => text.replaceAll(`{{${i + 1}}}`, v),
-        template.content
-      );
+      const renderedContent = renderTemplateContent(template.content, variables);
       await axios.post("/api/send", {
         conversationId,
         content: renderedContent,
         type: "template",
         templateId: template.id,
         variables,
+        buttonUrlParam: buttonUrlParam || undefined,
       });
       onMessageSent();
       toast.success(`Template "${template.name}" sent`);
@@ -427,7 +422,8 @@ export function MessageInput({
         )}
       </Modal>
 
-      {/* Template variable entry — shown only for a template with {{n}} placeholders */}
+      {/* Template variable entry — shown for a template with {{n}} body
+          placeholders and/or a Dynamic-URL button */}
       <Modal
         isOpen={!!variableTemplate}
         onClose={() => setVariableTemplate(null)}
@@ -451,6 +447,17 @@ export function MessageInput({
               />
             </div>
           ))}
+          {variableTemplate?.hasButtonParam && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Button link value</label>
+              <input
+                value={buttonUrlValue}
+                onChange={(e) => setButtonUrlValue(e.target.value)}
+                placeholder="e.g. a lead or order id appended to the button's URL"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+              />
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => setVariableTemplate(null)}
@@ -459,8 +466,14 @@ export function MessageInput({
               Cancel
             </button>
             <button
-              onClick={() => variableTemplate && sendTemplate(variableTemplate, variableValues)}
-              disabled={sending || variableValues.some((v) => !v.trim())}
+              onClick={() =>
+                variableTemplate && sendTemplate(variableTemplate, variableValues, buttonUrlValue)
+              }
+              disabled={
+                sending ||
+                variableValues.some((v) => !v.trim()) ||
+                (!!variableTemplate?.hasButtonParam && !buttonUrlValue.trim())
+              }
               className="flex-1 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-800 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"
             >
               {sending && <Loader2 className="w-4 h-4 animate-spin" />}
