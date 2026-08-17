@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sendTemplateMessage } from "@/lib/meta";
+import { sendTemplateMessage, extractMetaErrorMessage } from "@/lib/meta";
 import { toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents } from "@/lib/sse";
 
@@ -165,7 +165,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ conversationId: conversation.id, messageId: message.id }, { status: 201 });
   } catch (error) {
-    console.error("send-template error:", error);
-    return NextResponse.json({ error: "Failed to send template" }, { status: 500 });
+    const detail = extractMetaErrorMessage(error);
+    console.error("send-template error:", detail);
+    return NextResponse.json({ error: `Failed to send template: ${detail}` }, { status: 500 });
   }
 }

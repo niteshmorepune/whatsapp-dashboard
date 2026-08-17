@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendTemplateMessage } from "@/lib/meta";
+import { sendTemplateMessage, extractMetaErrorMessage } from "@/lib/meta";
 import { toMetaConfig } from "@/lib/whatsapp-numbers";
 
 const DELAY_MS = 1000; // 1 message per second to stay well within Meta limits
@@ -70,7 +70,11 @@ export async function POST(
           data: { status: "SENT", metaMessageId: messageId },
         });
         sent++;
-      } catch {
+      } catch (error) {
+        console.error(
+          `Broadcast send failed for recipient ${recipient.id}:`,
+          extractMetaErrorMessage(error)
+        );
         await prisma.broadcastRecipient.update({
           where: { id: recipient.id },
           data: { status: "FAILED" },

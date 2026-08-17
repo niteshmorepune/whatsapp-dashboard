@@ -8,6 +8,24 @@ export interface MetaNumberConfig {
   accessToken: string;
 }
 
+/**
+ * Meta's Graph API error body is `{ error: { message, type, code,
+ * error_subcode, fbtrace_id } }`. Node's default console.error/util.inspect
+ * depth (2) collapses this into an unhelpful `data: { error: [Object] }`
+ * when an axios error is logged directly — this pulls the real message out
+ * so callers can log/return something a human can actually act on instead
+ * of re-deploying with better logging every time a send fails.
+ */
+export function extractMetaErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const metaMessage = error.response?.data?.error?.message;
+    if (typeof metaMessage === "string") return metaMessage;
+    if (error.response?.data) return JSON.stringify(error.response.data);
+    return error.message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 function clientFor(config: MetaNumberConfig) {
   return axios.create({
     baseURL: META_API_BASE,

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
-import { sendTextMessage, sendTemplateMessage, sendMediaMessage } from "@/lib/meta";
+import { sendTextMessage, sendTemplateMessage, sendMediaMessage, extractMetaErrorMessage } from "@/lib/meta";
 import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 import { notifyCrm } from "@/lib/crm-notify";
 
@@ -152,7 +152,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(message);
   } catch (error) {
-    console.error("Send error:", error);
-    return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
+    const detail = extractMetaErrorMessage(error);
+    console.error("Send error:", detail);
+    return NextResponse.json({ error: `Failed to send message: ${detail}` }, { status: 500 });
   }
 }
