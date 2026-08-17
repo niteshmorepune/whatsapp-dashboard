@@ -19,11 +19,12 @@ export interface MetaNumberConfig {
 export function extractMetaErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const metaMessage = error.response?.data?.error?.message;
-    if (typeof metaMessage === "string") return metaMessage;
+    if (typeof metaMessage === "string" && metaMessage.trim() !== "") return metaMessage;
     if (error.response?.data) return JSON.stringify(error.response.data);
-    return error.message;
+    return error.message || "axios error with no message";
   }
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) return error.message || `${error.name} with no message`;
+  return String(error) || "unknown error";
 }
 
 function clientFor(config: MetaNumberConfig) {

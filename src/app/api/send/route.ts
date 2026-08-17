@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { inspect } from "util";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -172,7 +173,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(message);
   } catch (error) {
     const detail = extractMetaErrorMessage(error);
-    console.error("Send error:", detail);
+    // depth: null so nothing collapses to "[Object]" regardless of the
+    // exception's shape (axios error, Prisma error, plain Error, ...) — the
+    // extracted `detail` above is a best-effort guess at the Meta-specific
+    // shape and isn't always right, so this full dump is the real fallback.
+    console.error("Send error — extracted detail:", detail);
+    console.error("Send error — full:", inspect(error, { depth: null }));
     return NextResponse.json({ error: `Failed to send message: ${detail}` }, { status: 500 });
   }
 }
