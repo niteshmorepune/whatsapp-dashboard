@@ -42,8 +42,12 @@ export async function POST() {
         const metaTemplates = await listMessageTemplates(accessToken, wabaId);
 
         for (const mt of metaTemplates) {
-          // Only English — the only language this app's send flows use
-          // ("en" not "en_US", see /api/send-template's own note on this).
+          // Only English — the only language this app's UI/broadcasts show
+          // copy in. The exact code (e.g. "en" vs "en_US") still varies per
+          // template depending on what was selected at Meta submission
+          // time, so it's stored on the row rather than assumed — every
+          // send call site must pass the real one back to Meta, which
+          // matches templates by exact name+language pair.
           if (mt.language !== "en" && mt.language !== "en_US") continue;
 
           const body = mt.components.find((c) => c.type === "BODY");
@@ -55,12 +59,14 @@ export async function POST() {
               name: mt.name,
               content: body?.text ?? "",
               category: mt.category,
+              language: mt.language,
               isApproved: mt.status === "APPROVED",
               metaTemplateId: mt.id,
             },
             update: {
               content: body?.text ?? "",
               category: mt.category,
+              language: mt.language,
               isApproved: mt.status === "APPROVED",
               metaTemplateId: mt.id,
             },

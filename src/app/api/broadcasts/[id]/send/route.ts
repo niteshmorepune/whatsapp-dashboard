@@ -62,7 +62,8 @@ export async function POST(
         const { messageId } = await sendTemplateMessage(
           metaConfig,
           recipient.contact.phone,
-          broadcast.template.name
+          broadcast.template.name,
+          broadcast.template.language
         );
         await prisma.broadcastRecipient.update({
           where: { id: recipient.id },

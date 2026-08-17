@@ -241,6 +241,7 @@ model Template {
   name           String      @unique
   content        String      @db.Text
   category       String
+  language       String      @default("en")
   isApproved     Boolean     @default(false)
   metaTemplateId String?
   createdAt      DateTime    @default(now())

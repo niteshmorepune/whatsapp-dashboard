@@ -106,6 +106,7 @@ export interface Template {
   name: string;
   content: string;
   category: string;
+  language: string;
   isApproved: boolean;
   metaTemplateId: string | null;
   createdAt: string;

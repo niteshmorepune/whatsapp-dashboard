@@ -50,6 +50,7 @@ export function TemplateList({
               <Badge variant={categoryColors[template.category] ?? "gray"}>
                 {template.category}
               </Badge>
+              <Badge variant="gray">{template.language}</Badge>
             </div>
             {template.isApproved ? (
               <div className="flex items-center gap-1 text-green-400 flex-shrink-0">

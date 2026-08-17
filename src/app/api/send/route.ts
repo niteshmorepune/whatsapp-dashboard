@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       if (!template) {
         return NextResponse.json({ error: "Template not found" }, { status: 404 });
       }
-      const result = await sendTemplateMessage(metaConfig, phone, template.name);
+      const result = await sendTemplateMessage(metaConfig, phone, template.name, template.language);
       metaMessageId = result.messageId ?? null;
     } else if (MEDIA_TYPES.includes(type as MediaType)) {
       if (!mediaId) {

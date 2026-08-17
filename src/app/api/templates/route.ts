@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { name, content, category, metaTemplateId } = body;
+    const { name, content, category, language, metaTemplateId } = body;
 
     if (!name || !content || !category) {
       return NextResponse.json({ error: "name, content, category are required" }, { status: 400 });
@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
         name,
         content,
         category,
+        language: language || "en",
         metaTemplateId: metaTemplateId ?? null,
         isApproved: false,
       },

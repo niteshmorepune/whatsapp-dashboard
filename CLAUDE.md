@@ -270,7 +270,7 @@ the CRM's own PR for this feature).
 All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.
 
 - `sendTextMessage(config, to, text)` — sends a plain text message
-- `sendTemplateMessage(config, to, templateName)` — sends only the template **name** with language `en_US` and empty `components`; no variable substitution. Template must exist and be approved in Meta Business Manager first. Templates are approved per-WABA, so if all numbers share one WABA, a template approved once is usable from any of them.
+- `sendTemplateMessage(config, to, templateName, languageCode = "en_US", components = [])` — `languageCode` defaults to `en_US`, but every real call site now passes the template's own `Template.language` column explicitly (2026-08-17 fix: every call site used to either rely on that default or hardcode `"en"`, and Meta matches templates by exact name+language pair, so any template actually approved under a different language silently failed to send — this is why "Failed to send message" could happen for every template in the inbox/broadcast UI even though `/api/send-template`, the CRM-triggered path, kept working since it hardcoded the one language that happened to be right). Template must exist and be approved in Meta Business Manager first. Templates are approved per-WABA, so if all numbers share one WABA, a template approved once is usable from any of them.
 - `sendMediaMessage(config, to, mediaType, mediaId, caption?, filename?)` — sends image/document/audio/video by Meta media ID. For documents, `filename` is shown to the recipient.
 - `markMessageRead(config, messageId)` — marks a message as read
 
@@ -379,7 +379,7 @@ Database is **MySQL**. Key models and their non-obvious fields:
 - `AgentWhatsappNumber` — pivot, `@@unique([agentId, whatsappNumberId])`
 - `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`, `whatsappNumberId` (required — which line this thread is on)
 - `Message` — `direction: INBOUND | OUTBOUND`, `status: SENT | DELIVERED | READ | FAILED`, `mediaUrl` (Meta media ID for both inbound and outbound), `mediaType` (image/document/audio/video/null), `metaMessageId` (unique, used for dedup)
-- `Template` — `isApproved`, `metaTemplateId`, `category`. Approved per-WABA in Meta, not per-number, so one approval covers every `WhatsappNumber` on that WABA.
+- `Template` — `isApproved`, `metaTemplateId`, `category`, `language` (default `"en"`, added 2026-08-17 — must match the exact language Meta approved this specific template under, e.g. `"en_US"` for some). Approved per-WABA in Meta, not per-number, so one approval covers every `WhatsappNumber` on that WABA.
 - `QuickReply` — `name`, `content`
 - `ContactNote` — `contactId`, `agentId` (author), `content`; cascades on contact delete
 - `Broadcast` — `status: DRAFT | SENDING | COMPLETED | FAILED`, `sentCount`, `failedCount`, `templateId`, `agentId`, `whatsappNumberId` (required — which line the recipients are messaged from)

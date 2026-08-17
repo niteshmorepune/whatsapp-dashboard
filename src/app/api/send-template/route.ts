@@ -112,15 +112,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // "en" not "en_US" — the welcome_to_support template was submitted in
-    // Meta as plain "English", not "English (US)"; Meta matches templates by
-    // exact name+language pair, so this must match whatever was actually
-    // selected at submission time, not assumed.
+    // Meta matches templates by exact name+language pair, so this must be
+    // whatever language was actually selected at submission time for THIS
+    // template — not assumed to be "en" for every template (some are
+    // "en_US"; see the language column on Template, populated by
+    // Templates → Sync from Meta).
     const { messageId } = await sendTemplateMessage(
       toMetaConfig(whatsappNumber),
       phone,
       template.name,
-      "en",
+      template.language,
       components
     );
 

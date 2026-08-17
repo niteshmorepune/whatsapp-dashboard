@@ -15,6 +15,7 @@ interface TemplateEditorProps {
 }
 
 const CATEGORIES = ["MARKETING", "UTILITY", "AUTHENTICATION", "SERVICE"];
+const LANGUAGES = ["en", "en_US"];
 
 export function TemplateEditor({
   template,
@@ -26,6 +27,7 @@ export function TemplateEditor({
     name: template?.name ?? "",
     content: template?.content ?? "",
     category: template?.category ?? "UTILITY",
+    language: template?.language ?? "en",
     metaTemplateId: template?.metaTemplateId ?? "",
   });
   const [saving, setSaving] = useState(false);
@@ -48,6 +50,7 @@ export function TemplateEditor({
           name: form.name,
           content: form.content,
           category: form.category,
+          language: form.language,
           metaTemplateId: form.metaTemplateId || null,
         });
       } else {
@@ -55,6 +58,7 @@ export function TemplateEditor({
           name: form.name,
           content: form.content,
           category: form.category,
+          language: form.language,
           metaTemplateId: form.metaTemplateId || null,
         });
       }
@@ -93,19 +97,39 @@ export function TemplateEditor({
           </p>
         </div>
 
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Category</label>
-          <select
-            value={form.category}
-            onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="block text-sm text-gray-400 mb-1">Category</label>
+            <select
+              value={form.category}
+              onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1">
+            <label className="block text-sm text-gray-400 mb-1">Language</label>
+            <select
+              value={form.language}
+              onChange={(e) => setForm((p) => ({ ...p, language: e.target.value }))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-600 mt-1">
+              Must match exactly what was selected in Meta at submission
+            </p>
+          </div>
         </div>
 
         <div>
