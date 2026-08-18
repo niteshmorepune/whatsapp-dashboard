@@ -247,7 +247,7 @@ async function handleInboundMessage(
   // AI after-hours assistant — decides for itself (line's AiMode + business
   // hours/holidays + this conversation's aiMuted flag) whether to reply.
   // Fire-and-forget: never blocks or fails the Meta webhook response.
-  maybeReplyWithAi(whatsappNumber, conversation, contact).catch((error) =>
+  maybeReplyWithAi(whatsappNumber, conversation, contact, content).catch((error) =>
     console.error("AI after-hours auto-reply failed:", error)
   );
 }

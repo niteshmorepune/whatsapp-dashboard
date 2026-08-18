@@ -9,6 +9,29 @@ import type { WhatsappNumber, Conversation, Contact } from "@prisma/client";
 
 const CONTEXT_MESSAGE_COUNT = 10;
 
+// A real customer reaching out again within this window after our own AI
+// already replied doesn't need a second full reply drafted — most commonly
+// this fires when the OTHER side's own WhatsApp Business auto-responder
+// (a canned "Thanks for contacting us" greeting) sends two separate
+// messages seconds apart, which otherwise triggered two near-duplicate
+// sales-pitch replies in a row (real production leads 202608, id 236/232 —
+// "varun Aqua"/"Earth Electric" — both auto-replied to twice within the
+// same minute). A genuine human sending two real messages in a row within
+// 5 minutes still only gets one considered reply, which reads fine either
+// way ("thanks, and to add...").
+const AUTO_REPLY_COOLDOWN_MINUTES = 5;
+
+// What `handleInboundMessage` in api/webhook/route.ts falls back to for any
+// message type it has no real text for (button clicks, interactive replies,
+// media, unsupported types) — see its `content` derivation. There is
+// nothing here for the AI to meaningfully respond to; drafting a reply from
+// a bare "[button]" is what produced a real, genuinely broken reply in
+// production (the model had so little to go on it started asking US
+// clarifying questions instead of writing customer-facing text — see
+// ai-reply.ts's system prompt for the corresponding guardrail). A human
+// should look at these instead.
+const NO_TEXT_CONTENT_PATTERN = /^\[.+\]$/;
+
 /**
  * Called after every inbound message is saved (see api/webhook). Decides
  * whether the AI after-hours assistant should answer this conversation right
@@ -20,10 +43,12 @@ const CONTEXT_MESSAGE_COUNT = 10;
 export async function maybeReplyWithAi(
   whatsappNumber: WhatsappNumber,
   conversation: Conversation,
-  contact: Contact
+  contact: Contact,
+  triggeringMessageContent: string
 ): Promise<void> {
   try {
     if (conversation.aiMuted) return;
+    if (NO_TEXT_CONTENT_PATTERN.test(triggeringMessageContent.trim())) return;
 
     const holidayDateKeys = await getHolidayDateKeys();
     const isLive = resolveAiLiveState(
@@ -32,6 +57,18 @@ export async function maybeReplyWithAi(
       holidayDateKeys
     );
     if (!isLive) return;
+
+    const lastAiReply = await prisma.message.findFirst({
+      where: { conversationId: conversation.id, direction: "OUTBOUND", sentByAi: true },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    if (
+      lastAiReply &&
+      Date.now() - lastAiReply.createdAt.getTime() < AUTO_REPLY_COOLDOWN_MINUTES * 60 * 1000
+    ) {
+      return;
+    }
 
     const recentMessages = await prisma.message.findMany({
       where: { conversationId: conversation.id },
