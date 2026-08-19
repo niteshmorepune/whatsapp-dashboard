@@ -84,6 +84,15 @@ async function handleInboundMessage(
     document?: { id: string; mime_type: string; filename?: string };
     audio?: { id: string; mime_type: string };
     video?: { id: string; mime_type: string };
+    // A tap on a template's Quick Reply button (not a URL/phone button —
+    // those never generate an inbound webhook event at all).
+    button?: { payload: string; text: string };
+    // A tap on a non-template interactive message's button/list reply.
+    interactive?: {
+      type: string;
+      button_reply?: { id: string; title: string };
+      list_reply?: { id: string; title: string; description?: string };
+    };
     errors?: { title?: string; message?: string }[];
   },
   contactInfo: { profile?: { name?: string } } | undefined,
@@ -95,6 +104,9 @@ async function handleInboundMessage(
     msg.text?.body ||
     msg.image?.caption ||
     msg.document?.filename ||
+    msg.button?.text ||
+    msg.interactive?.button_reply?.title ||
+    msg.interactive?.list_reply?.title ||
     msg.errors?.[0]?.title ||
     msg.errors?.[0]?.message ||
     `[${msg.type}]`;

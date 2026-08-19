@@ -22,12 +22,15 @@ const CONTEXT_MESSAGE_COUNT = 10;
 const AUTO_REPLY_COOLDOWN_MINUTES = 5;
 
 // What `handleInboundMessage` in api/webhook/route.ts falls back to for any
-// message type it has no real text for (button clicks, interactive replies,
-// media, unsupported types) — see its `content` derivation. There is
-// nothing here for the AI to meaningfully respond to; drafting a reply from
-// a bare "[button]" is what produced a real, genuinely broken reply in
-// production (the model had so little to go on it started asking US
-// clarifying questions instead of writing customer-facing text — see
+// message type it still has no real text for (media with no caption/
+// filename, unsupported types) — see its `content` derivation. A button
+// click or interactive reply now carries the tapped button/list-item's real
+// title instead of hitting this fallback, so the AI can respond to those
+// meaningfully; this pattern only guards the types that are still a bare
+// "[type]" placeholder with nothing for the model to go on. Drafting a
+// reply from a bare placeholder is what produced a real, genuinely broken
+// reply in production (the model had so little to go on it started asking
+// US clarifying questions instead of writing customer-facing text — see
 // ai-reply.ts's system prompt for the corresponding guardrail). A human
 // should look at these instead.
 const NO_TEXT_CONTENT_PATTERN = /^\[.+\]$/;
