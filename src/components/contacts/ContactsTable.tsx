@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import { Search, Plus, ChevronRight, Loader2 } from "lucide-react";
+import { Search, Plus, ChevronRight, Loader2, Send } from "lucide-react";
 import { Contact } from "@/types";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { Modal } from "@/components/ui/Modal";
+import { QuickSendModal } from "@/components/contacts/QuickSendModal";
 import { formatPhone, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -27,6 +28,7 @@ export function ContactsTable({ onSelect, selectedId }: ContactsTableProps) {
     email: "",
     tags: "",
   });
+  const [quickSendContact, setQuickSendContact] = useState<Contact | null>(null);
 
   const fetchContacts = useCallback(async () => {
     try {
@@ -182,7 +184,19 @@ export function ContactsTable({ onSelect, selectedId }: ContactsTableProps) {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <ChevronRight className="w-4 h-4 text-gray-600" />
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setQuickSendContact(contact);
+                        }}
+                        title="Send message or template"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-green-400 hover:bg-gray-800 transition"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                      <ChevronRight className="w-4 h-4 text-gray-600" />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -260,6 +274,8 @@ export function ContactsTable({ onSelect, selectedId }: ContactsTableProps) {
           </div>
         </div>
       </Modal>
+
+      <QuickSendModal contact={quickSendContact} onClose={() => setQuickSendContact(null)} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import {
   X,
@@ -18,6 +18,7 @@ import {
 import { Contact, Conversation, ContactNote } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
+import { QuickSendModal } from "@/components/contacts/QuickSendModal";
 import { formatPhone, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -43,20 +44,25 @@ export function ContactDetail({
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [quickSendOpen, setQuickSendOpen] = useState(false);
   const [form, setForm] = useState({
     name: contact.name ?? "",
     email: contact.email ?? "",
     tags: (contact.tags as string[]).join(", "),
   });
 
-  useEffect(() => {
+  const refetchConversations = useCallback(() => {
     axios
       .get(`/api/contacts/${contact.id}`)
       .then((r) => setConversations(r.data.conversations ?? []))
       .catch(() => {})
       .finally(() => setLoadingConvs(false));
-    axios.get(`/api/contacts/${contact.id}/notes`).then((r) => setNotes(r.data)).catch(() => {});
   }, [contact.id]);
+
+  useEffect(() => {
+    refetchConversations();
+    axios.get(`/api/contacts/${contact.id}/notes`).then((r) => setNotes(r.data)).catch(() => {});
+  }, [contact.id, refetchConversations]);
 
   async function addNote() {
     if (!noteText.trim()) return;
@@ -134,12 +140,21 @@ export function ContactDetail({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-800">
         <h3 className="text-sm font-semibold text-white">Contact Details</h3>
-        <button
-          onClick={onClose}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setQuickSendOpen(true)}
+            title="Send message or template"
+            className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition"
+          >
+            <Send className="w-3.5 h-3.5" /> Send
+          </button>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -399,6 +414,12 @@ export function ContactDetail({
           )}
         </div>
       </div>
+
+      <QuickSendModal
+        contact={quickSendOpen ? contact : null}
+        onClose={() => setQuickSendOpen(false)}
+        onSent={refetchConversations}
+      />
     </div>
   );
 }
