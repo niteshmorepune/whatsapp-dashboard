@@ -245,14 +245,25 @@ const SECTIONS: Section[] = [
           <Step n={3} text="Use Tags to group contacts (e.g. 'vip', 'lead', 'support'). Tags help filter recipients for Broadcasts." />
           <Step n={4} text="Opt Out marks a contact as someone who no longer wants to receive messages. They will be skipped in Broadcasts automatically." />
           <Step n={5} text="Internal Notes let any agent leave a private note about the contact — useful for context that other agents should know." />
+          <Step n={6} text="Click the green send icon on any row in the Contacts list — or the Send button at the top of a contact's detail panel — to send a message or template right away, without opening the Inbox first." />
+          <Step n={7} text="If you have access to more than one line (e.g. Support and Marketing), pick which one to send from. Choose Message for a plain text reply, or Template to pick an approved template and fill in its variables — same as sending from the Inbox." />
         </div>
         <Note>
           Phone numbers must be saved without the + sign (e.g. 919028099919 not +919028099919).
           The system normalises this automatically when you add a contact via the app.
         </Note>
+        <Note>
+          The Message tab is disabled if the 24-hour window has already expired on the chosen line for
+          that contact — it automatically switches you to Template instead, same rule as the Inbox.
+        </Note>
         <Tip>
           When a new customer messages you on WhatsApp, a contact is created automatically.
           You can then edit their name, email, and tags from the Contacts page.
+        </Tip>
+        <Tip>
+          Quick-sending from Contacts uses (or creates) that contact&apos;s conversation on the line you
+          pick, so the message shows up in the Inbox immediately — nothing about it is separate from a
+          normal chat.
         </Tip>
       </div>
     ),
