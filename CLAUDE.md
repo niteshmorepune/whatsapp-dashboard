@@ -46,6 +46,9 @@ META_WABA_ID=
 META_WEBHOOK_VERIFY_TOKEN=
 WADESK_SERVICE_KEY=
 ANTHROPIC_API_KEY=
+CRM_WEBHOOK_URL=
+CRM_WEBHOOK_TOKEN=
+CRM_LEAD_CONTEXT_URL=
 ```
 
 `ANTHROPIC_API_KEY` powers the AI after-hours assistant (see below) — if unset, `generateAiReply()` logs and returns `null`, so inbound messages are still recorded normally, just with no auto-reply.
@@ -174,6 +177,26 @@ lead going unanswered until the next business day.
   here can never break inbound message handling — same "AI failure never
   breaks the core workflow" convention used everywhere else in this NEDS
   ecosystem.
+- **CRM lead context (added 2026-08-20)**: `src/lib/crm-lead-context.ts`'s
+  `getCrmLeadContext(phone)` is called from `generateAiReply()` (in
+  parallel with the FAQ query) — a `GET` to the CRM's `/api/leads/context`
+  (Bearer `CRM_WEBHOOK_TOKEN`, the reverse direction of `crm-notify.ts`'s
+  push, same trust boundary, no new secret) returning the matched Lead's
+  campaign, service, declared budget, extra form answers, and — if the lead
+  qualifies — a Visibility Audit self-serve offer link. Built after a real
+  incident: the assistant's reply to a Meta Ads lead ("newSURYA CABLE")
+  could only say "thanks for filling in the form," because it had never
+  been given which form/campaign, or that the lead's own "budget" answer
+  was garbled (literally the company name — a Meta-side form data issue,
+  confirmed not a CRM bug). `buildLeadContextBlock()` turns the lookup into
+  a system-prompt block and 3 new rules tell the model to (1) name the
+  actual campaign/goal instead of a vague "the form", (2) never restate an
+  unparseable budget answer as if it were real — ask to confirm it instead,
+  and (3) offer the Visibility Audit link as a concrete next step when
+  present, not just a promise that the team will follow up. Same
+  never-throw/5s-timeout/null-on-failure contract as the rest of this
+  file's external calls — a CRM outage just means the reply falls back to
+  the previous generic behavior, never a broken or blocked send.
 - **`Conversation.aiMuted`** — set to `true` unconditionally by `POST
   /api/send` on every send (a session agent's own send, or a CRM-forwarded
   staff reply via the service key — both are "a human is handling this,"

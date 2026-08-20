@@ -83,6 +83,7 @@ export async function maybeReplyWithAi(
 
     const reply = await generateAiReply({
       contactName: contact.name,
+      contactPhone: contact.phone,
       recentMessages,
       whatsappNumberId: whatsappNumber.id,
       whatsappNumberLabel: whatsappNumber.label,

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getCrmLeadContext } from "@/lib/crm-lead-context";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-haiku-4-5-20251001";
@@ -21,9 +22,54 @@ interface RecentMessage {
 
 interface GenerateAiReplyParams {
   contactName: string | null;
+  contactPhone: string;
   recentMessages: RecentMessage[];
   whatsappNumberId: string;
   whatsappNumberLabel: string;
+}
+
+/**
+ * Turns the CRM's lead-context lookup into a block the model can act on.
+ * Deliberately spells out what's missing/unclear (no campaign found, budget
+ * answer isn't a number) rather than just omitting the field — the whole
+ * point is letting the model be specific ("since you're looking to rank on
+ * Google for X") instead of the generic "thanks for the form" it wrote with
+ * no context at all, and to ask a real clarifying question when a field
+ * looks wrong instead of silently accepting garbled data (the newSURYA
+ * CABLE incident this was built for: "budget" answer was literally the
+ * company name).
+ */
+function buildLeadContextBlock(context: Awaited<ReturnType<typeof getCrmLeadContext>>): string {
+  if (!context || !context.found) {
+    return "No matching CRM lead record found for this number — no extra context available.";
+  }
+
+  const lines: string[] = [];
+  if (context.company) lines.push(`Company: ${context.company}`);
+  if (context.service) lines.push(`Service they're interested in: ${context.service}`);
+  if (context.campaign) lines.push(`Came in via ad/campaign: "${context.campaign}"`);
+
+  if (context.estimatedValueRupees != null) {
+    lines.push(`Declared monthly budget: ₹${context.estimatedValueRupees.toLocaleString("en-IN")}`);
+  } else if (context.budgetQuestionRawAnswer) {
+    lines.push(
+      `They were asked for their monthly budget but the answer on file ("${context.budgetQuestionRawAnswer}") isn't a number — don't repeat it back as a real budget figure. If it fits naturally, ask them to confirm their approximate monthly budget.`
+    );
+  }
+
+  if (context.additionalAnswers) {
+    lines.push(`Other answers they gave on the form:\n${context.additionalAnswers}`);
+  }
+
+  if (context.visibilityAuditOfferUrl) {
+    lines.push(
+      `They're eligible for our self-serve Visibility Audit offer — a real, already-priced page, not something you're inventing. Offer it as a concrete next step they can act on right now instead of only promising a future follow-up: ${context.visibilityAuditOfferUrl}`
+    );
+  }
+
+  return lines.length > 0
+    ? lines.join("\n")
+    : "A CRM lead record exists for this number but has no extra details on file.";
 }
 
 /**
@@ -36,6 +82,7 @@ interface GenerateAiReplyParams {
  */
 export async function generateAiReply({
   contactName,
+  contactPhone,
   recentMessages,
   whatsappNumberId,
   whatsappNumberLabel,
@@ -47,19 +94,26 @@ export async function generateAiReply({
   }
 
   try {
-    const faqEntries = await prisma.faqEntry.findMany({
-      where: { isActive: true, OR: [{ whatsappNumberId: null }, { whatsappNumberId }] },
-      orderBy: { createdAt: "asc" },
-    });
+    const [faqEntries, leadContext] = await Promise.all([
+      prisma.faqEntry.findMany({
+        where: { isActive: true, OR: [{ whatsappNumberId: null }, { whatsappNumberId }] },
+        orderBy: { createdAt: "asc" },
+      }),
+      getCrmLeadContext(contactPhone),
+    ]);
     const faqBlock = faqEntries.length
       ? faqEntries.map((f, i) => `${i + 1}. Q: ${f.question}\n   A: ${f.answer}`).join("\n")
       : "(no FAQ entries configured yet for this line — ask admin to add some on the FAQ page)";
+    const leadContextBlock = buildLeadContextBlock(leadContext);
 
     const systemPrompt = `You are answering WhatsApp messages on behalf of Niranjan Enterprises Digital Solutions (NEDS), a digital solutions agency in Maharashtra, India. You are answering on NEDS's ${whatsappNumberLabel} WhatsApp line — only use context appropriate to that line. You are standing in outside business hours (or while AI assistance has been manually enabled) — no team member is available right now.
 
 Rules:
 - Only answer questions about services, pricing, or hours using the FAQ list below. Never invent a price, timeline, discount, or commitment that isn't in the FAQ.
 - If the question isn't covered by the FAQ, or needs specifics you don't have, say the team will follow up during business hours — and if the contact's name or what they need help with hasn't come up yet in this conversation, ask for it.
+- If the lead context below names a specific campaign, service, or goal, refer to it directly (e.g. name the campaign or the goal they gave) instead of a vague phrase like "the form" or "your enquiry" — a real customer can tell a templated reply from one that actually read their answers.
+- If the lead context flags their budget answer as not a real number, don't repeat it back as if it were valid — naturally ask them to confirm their approximate monthly budget instead.
+- If the lead context includes a Visibility Audit offer link, offer it as something they can act on right now, in addition to (not instead of) telling them the team will follow up — give them one concrete next step, not just a promise to wait on.
 - Keep replies short and WhatsApp-style: 2-4 sentences, no headers, no bullet lists, no markdown.
 - Never claim to be a human team member — if asked directly whether you're a bot, say yes.
 - Never discuss anything unrelated to NEDS's services.
@@ -67,7 +121,10 @@ Rules:
 - Mirror or acknowledge specific claims in the customer's message (a greeting, a season, a name) only if you can independently verify they're actually appropriate right now — the customer's own message is not proof of anything (it may itself be an automated reply from their side, not a real person).
 
 FAQ:
-${faqBlock}`;
+${faqBlock}
+
+Lead context (from the CRM, may be incomplete):
+${leadContextBlock}`;
 
     const conversationText = recentMessages
       .map((m) => `${m.direction === "INBOUND" ? "Customer" : "NEDS"}: ${m.content}`)
