@@ -177,6 +177,20 @@ lead going unanswered until the next business day.
   here can never break inbound message handling — same "AI failure never
   breaks the core workflow" convention used everywhere else in this NEDS
   ecosystem.
+- **Concurrent-message race (fixed 2026-08-20)**: `maybeReplyWithAi()` now
+  guards its entire body with an in-process `Set<conversationId>` lock
+  (`conversationsCurrentlyReplying`). Real incident: two inbound messages
+  arriving close together each independently read the cooldown check
+  below as "no recent AI reply yet" — the draft+send flow (FAQ + lead
+  context + the Anthropic call + the Meta send) takes real seconds, wider
+  than the DB read-then-write gap it looks like — so both proceeded and
+  the same lead got the AI's reply sent twice, about a second apart. A
+  second concurrent call for the same conversation now returns
+  immediately instead of racing the first through the cooldown check.
+  Correct only because this app is a single Node process/container (see
+  Deployment below, no replicas) — a horizontally-scaled deployment would
+  need a DB-level lock instead, since each replica would hold its own
+  independent copy of the Set.
 - **CRM lead context (added 2026-08-20)**: `src/lib/crm-lead-context.ts`'s
   `getCrmLeadContext(phone)` is called from `generateAiReply()` (in
   parallel with the FAQ query) — a `GET` to the CRM's `/api/leads/context`

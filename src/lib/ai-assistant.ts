@@ -35,6 +35,27 @@ const AUTO_REPLY_COOLDOWN_MINUTES = 5;
 // should look at these instead.
 const NO_TEXT_CONTENT_PATTERN = /^\[.+\]$/;
 
+// In-process lock, one entry per conversation currently drafting/sending a
+// reply. Real incident (2026-08-19/20, leads #66/#72): two inbound
+// messages arriving close together each called maybeReplyWithAi()
+// independently; both read the cooldown check below as "no recent AI
+// reply yet" before either had actually written its own Message row — the
+// gap is wider than it looks, since drafting (FAQ + lead-context lookup +
+// the Anthropic call) and sending both take real time, not just the DB
+// read-then-write. The result: the same lead got the AI's reply sent
+// twice, about a second apart. This Set closes that window by serializing
+// the whole function per conversation — a second concurrent call for the
+// same conversation returns immediately rather than racing the first
+// through the cooldown check, consistent with this function's existing
+// "a burst of messages within the cooldown window still only gets one
+// reply" design (see AUTO_REPLY_COOLDOWN_MINUTES above), just now also
+// covering the case where the first reply hasn't been persisted yet.
+// Correct ONLY because this app runs as a single Node process/container
+// (see CLAUDE.md's Deployment section — no replicas, no cluster mode); a
+// horizontally-scaled deployment would need a DB-level lock instead, since
+// each replica would have its own independent copy of this Set.
+const conversationsCurrentlyReplying = new Set<string>();
+
 /**
  * Called after every inbound message is saved (see api/webhook). Decides
  * whether the AI after-hours assistant should answer this conversation right
@@ -49,6 +70,9 @@ export async function maybeReplyWithAi(
   contact: Contact,
   triggeringMessageContent: string
 ): Promise<void> {
+  if (conversationsCurrentlyReplying.has(conversation.id)) return;
+  conversationsCurrentlyReplying.add(conversation.id);
+
   try {
     if (conversation.aiMuted) return;
     if (NO_TEXT_CONTENT_PATTERN.test(triggeringMessageContent.trim())) return;
@@ -133,5 +157,7 @@ export async function maybeReplyWithAi(
     });
   } catch (error) {
     console.error("AI after-hours auto-reply failed:", error);
+  } finally {
+    conversationsCurrentlyReplying.delete(conversation.id);
   }
 }
