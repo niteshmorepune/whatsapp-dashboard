@@ -79,10 +79,10 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
         return [...prev, message];
       });
     },
-    "message-status": ({ conversationId: cid, messageId, status }) => {
+    "message-status": ({ conversationId: cid, messageId, status, errorMessage }) => {
       if (cid !== conversationId) return;
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, status } : m))
+        prev.map((m) => (m.id === messageId ? { ...m, status, errorMessage: errorMessage ?? null } : m))
       );
     },
   });

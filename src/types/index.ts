@@ -95,6 +95,8 @@ export interface Message {
   mediaType: string | null;
   metaMessageId: string | null;
   status: MessageStatus;
+  errorCode: number | null;
+  errorMessage: string | null;
   sentByAgentId: string | null;
   sentByAi: boolean;
   createdAt: string;

@@ -7,7 +7,7 @@ interface MessageBubbleProps {
   message: Message;
 }
 
-function StatusTick({ status }: { status: Message["status"] }) {
+function StatusTick({ status, errorMessage }: { status: Message["status"]; errorMessage?: string | null }) {
   switch (status) {
     case "SENT":
       return <Check className="w-3 h-3 text-gray-400" />;
@@ -16,7 +16,11 @@ function StatusTick({ status }: { status: Message["status"] }) {
     case "READ":
       return <CheckCheck className="w-3 h-3 text-blue-400" />;
     case "FAILED":
-      return <XCircle className="w-3 h-3 text-red-400" />;
+      return (
+        <span title={errorMessage ?? "Message failed to send"} className="cursor-help">
+          <XCircle className="w-3 h-3 text-red-400" />
+        </span>
+      );
     default:
       return <Clock className="w-3 h-3 text-gray-500" />;
   }
@@ -88,6 +92,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </p>
         ) : null}
 
+        {isOutbound && message.status === "FAILED" && message.errorMessage && (
+          <p className="text-[11px] text-red-300 mt-1">{message.errorMessage}</p>
+        )}
+
         <div
           className={cn(
             "flex items-center gap-1 mt-1",
@@ -97,7 +105,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <span className="text-[10px] text-white/50">
             {format(new Date(message.createdAt), "HH:mm")}
           </span>
-          {isOutbound && <StatusTick status={message.status} />}
+          {isOutbound && <StatusTick status={message.status} errorMessage={message.errorMessage} />}
         </div>
       </div>
     </div>

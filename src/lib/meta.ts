@@ -27,6 +27,35 @@ export function extractMetaErrorMessage(error: unknown): string {
   return String(error) || "unknown error";
 }
 
+export interface MetaStatusError {
+  code: number;
+  message: string;
+}
+
+/**
+ * A status webhook's `errors[]` entry (distinct from the Graph API send-call
+ * error `extractMetaErrorMessage()` above handles) — Meta's shape is
+ * `{ code, title, message?, error_data?: { details? } }`. `error_data.details`
+ * is usually the more specific, human-actionable line (e.g. why a template
+ * re-engagement send was blocked) when present, so it's preferred over the
+ * generic `title`/`message`. Only the first entry is used — Meta has never
+ * been observed sending more than one per status update.
+ */
+export function extractStatusError(
+  errors: unknown
+): MetaStatusError | null {
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  const first = errors[0] as {
+    code?: number;
+    title?: string;
+    message?: string;
+    error_data?: { details?: string };
+  };
+  const detail = first.error_data?.details || first.message || first.title;
+  if (typeof first.code !== "number" || !detail) return null;
+  return { code: first.code, message: detail };
+}
+
 function clientFor(config: MetaNumberConfig) {
   return axios.create({
     baseURL: META_API_BASE,

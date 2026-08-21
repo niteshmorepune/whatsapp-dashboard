@@ -5,6 +5,7 @@ import { sendPushToAgents } from "@/lib/webpush";
 import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 import { maybeReplyWithAi } from "@/lib/ai-assistant";
 import { notifyCrm } from "@/lib/crm-notify";
+import { extractStatusError } from "@/lib/meta";
 import type { WhatsappNumber } from "@prisma/client";
 
 // GET: Meta webhook verification
@@ -268,6 +269,7 @@ async function handleStatusUpdate(status: {
   id: string;
   status: string;
   conversation?: { id: string };
+  errors?: unknown;
 }) {
   const metaMessageId = status.id;
   const newStatus = status.status.toUpperCase() as
@@ -275,6 +277,10 @@ async function handleStatusUpdate(status: {
     | "DELIVERED"
     | "READ"
     | "FAILED";
+
+  // Only ever present (and only ever meaningful) on a FAILED status update —
+  // Meta doesn't send errors[] for SENT/DELIVERED/READ.
+  const statusError = newStatus === "FAILED" ? extractStatusError(status.errors) : null;
 
   const message = await prisma.message.findUnique({
     where: { metaMessageId },
@@ -284,7 +290,11 @@ async function handleStatusUpdate(status: {
 
   const updated = await prisma.message.update({
     where: { id: message.id },
-    data: { status: newStatus },
+    data: {
+      status: newStatus,
+      errorCode: statusError?.code ?? null,
+      errorMessage: statusError?.message ?? null,
+    },
   });
 
   const eligibleAgentIds = await getAgentIdsWithNumberAccess(message.conversation.whatsappNumberId);
@@ -292,6 +302,7 @@ async function handleStatusUpdate(status: {
     conversationId: message.conversationId,
     messageId: message.id,
     status: newStatus,
+    errorMessage: statusError?.message ?? null,
   });
 
   return updated;

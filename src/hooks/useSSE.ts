@@ -15,6 +15,7 @@ export interface SSEMessageStatusData {
   conversationId: string;
   messageId: string;
   status: Message["status"];
+  errorMessage?: string | null;
 }
 
 export interface SSEConversationUpdatedData {

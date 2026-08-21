@@ -224,6 +224,12 @@ model Message {
   mediaType      String?
   metaMessageId  String?          @unique
   status         MessageStatus    @default(SENT)
+  // Populated from the Meta status webhook's `errors[]` entry when status
+  // flips to FAILED (see handleStatusUpdate in api/webhook/route.ts) — null
+  // for every other status, and null for a FAILED message on an older Meta
+  // payload that carried no errors[] detail.
+  errorCode      Int?
+  errorMessage   String?          @db.Text
   sentByAgentId  String?
   // True for a message the AI after-hours assistant sent on its own
   // (sentByAgentId stays null for these, same as a CRM-forwarded send).
