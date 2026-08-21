@@ -290,6 +290,12 @@ const SECTIONS: Section[] = [
           Set your conversation to Pending if you are waiting for something (e.g. waiting for the
           customer to reply) — this keeps it separate from actively open chats.
         </Tip>
+        <Note>
+          A red ⊗ next to a sent message means it failed to deliver. Hover over it (or check the
+          red text under the message) to see the actual reason WhatsApp gave — e.g. the 24-hour
+          reply window expired, or WhatsApp itself chose not to deliver it. If you don&apos;t see a
+          reason, the message failed before this feature existed and there&apos;s no way to recover it.
+        </Note>
       </div>
     ),
   },
