@@ -6,6 +6,7 @@ import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess } from "@/lib/wha
 import { maybeReplyWithAi } from "@/lib/ai-assistant";
 import { notifyCrm } from "@/lib/crm-notify";
 import { extractStatusError } from "@/lib/meta";
+import { isOptOutMessage } from "@/lib/opt-out";
 import type { WhatsappNumber } from "@prisma/client";
 
 // GET: Meta webhook verification
@@ -141,6 +142,18 @@ async function handleInboundMessage(
         : undefined,
     },
   });
+
+  // A customer's own "stop"/"unsubscribe"-style message is a real opt-out
+  // request, not just something the AI should politely acknowledge in text
+  // — actually suppress future Broadcasts (which already respect
+  // optedOut) and the AI auto-reply (see ai-assistant.ts) for them.
+  if (!contact.optedOut && isOptOutMessage(content)) {
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: { optedOut: true },
+    });
+    contact.optedOut = true;
+  }
 
   // Find or create conversation — scoped per line, so a contact who has
   // messaged both numbers (e.g. a lead on the marketing line who later

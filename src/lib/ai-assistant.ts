@@ -75,6 +75,7 @@ export async function maybeReplyWithAi(
 
   try {
     if (conversation.aiMuted) return;
+    if (contact.optedOut) return;
     if (NO_TEXT_CONTENT_PATTERN.test(triggeringMessageContent.trim())) return;
 
     const holidayDateKeys = await getHolidayDateKeys();

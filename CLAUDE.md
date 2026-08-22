@@ -166,7 +166,9 @@ lead going unanswered until the next business day.
   `maybeReplyWithAi()` (`src/lib/ai-assistant.ts`) fire-and-forget, after the
   inbound message is saved and broadcast — never blocks or fails the Meta
   webhook response. That function: skips if `Conversation.aiMuted`; skips if
-  `resolveAiLiveState()` says the line isn't AI-live right now; otherwise
+  `Contact.optedOut` (see "Opt-out detection" below — a contact who asked to
+  stop shouldn't get one more AI-drafted message, even a well-meaning one);
+  skips if `resolveAiLiveState()` says the line isn't AI-live right now; otherwise
   loads the last 10 messages for context, calls `generateAiReply()`
   (`src/lib/ai-reply.ts`, plain `fetch` to the Anthropic Messages API, model
   `claude-haiku-4-5-20251001`, max 300 tokens — no SDK dependency added), and
@@ -211,6 +213,25 @@ lead going unanswered until the next business day.
   never-throw/5s-timeout/null-on-failure contract as the rest of this
   file's external calls — a CRM outage just means the reply falls back to
   the previous generic behavior, never a broken or blocked send.
+- **Opt-out detection (added 2026-08-22)**: `isOptOutMessage()`
+  (`src/lib/opt-out.ts`) matches an inbound message's ENTIRE content
+  (trimmed/lowercased/trailing-punctuation-stripped) against a bounded,
+  hardcoded set of phrases ("stop", "stop promotions", "unsubscribe", "opt
+  out", "remove me", "don't contact me", etc.) — deliberately an exact-phrase
+  match, never a substring one, so "I'll stop the payment" or "stop by
+  tomorrow" can't false-positive a real contact into `optedOut`. Checked in
+  `api/webhook`'s `handleInboundMessage()` right after the Contact
+  upsert — if it matches and `optedOut` isn't already `true`, the Contact
+  row is updated immediately, before Broadcasts or the AI ever see this
+  message. Built after a real incident: a Marketing-line contact texted
+  "Stop promotions" and the business (a human agent) replied anyway one
+  message later — `optedOut` was previously a **manual-only** toggle
+  (Contacts page "Opt out"/"Opt in" button, `PATCH /api/contacts/[id]`) with
+  no automatic detection at all, so an AI reply that says "we got your STOP
+  message" was never actually backed by real suppression. This does not
+  block a human agent from replying manually — only Broadcasts (already
+  checked `optedOut` before this) and `maybeReplyWithAi()` (now also checks
+  it, see above) skip an opted-out contact.
 - **`Conversation.aiMuted`** — set to `true` unconditionally by `POST
   /api/send` on every send (a session agent's own send, or a CRM-forwarded
   staff reply via the service key — both are "a human is handling this,"
@@ -411,7 +432,7 @@ Using **Prisma v5** (not v7). The `prisma` singleton is in `src/lib/prisma.ts` w
 
 Database is **MySQL**. Key models and their non-obvious fields:
 - `Agent` — `passwordHash`, `role: ADMIN | AGENT`, `isActive`, `whatsappNumberGrants` (AgentWhatsappNumber[] — which lines an AGENT can see; irrelevant for ADMIN, who always has every line)
-- `Contact` — `phone` (unique), `tags` (JSON array), `optedOut`. **Phone is stored without a `+` prefix** (e.g., `919028099919`), matching how Meta's webhook delivers the `from` field. `POST /api/contacts` normalizes by stripping any leading `+` before saving. `formatPhone()` adds the visual `+` for display only and must never be used as a lookup key. Passing a `+`-prefixed number directly to `prisma.contact.findUnique({ where: { phone } })` will silently miss the record. Phone is globally unique regardless of which of our numbers they've messaged — the line lives on `Conversation`, not `Contact`.
+- `Contact` — `phone` (unique), `tags` (JSON array), `optedOut` (see "Opt-out detection" below — auto-set from an inbound message, and also toggleable by hand from the Contacts page; Broadcasts and the AI after-hours assistant both skip a contact with this set, a human agent replying manually is never blocked). **Phone is stored without a `+` prefix** (e.g., `919028099919`), matching how Meta's webhook delivers the `from` field. `POST /api/contacts` normalizes by stripping any leading `+` before saving. `formatPhone()` adds the visual `+` for display only and must never be used as a lookup key. Passing a `+`-prefixed number directly to `prisma.contact.findUnique({ where: { phone } })` will silently miss the record. Phone is globally unique regardless of which of our numbers they've messaged — the line lives on `Conversation`, not `Contact`.
 - `WhatsappNumber` — `label`, `businessNumber` (unique, digits-only), `phoneNumberId` (unique, Meta's ID), `wabaId`, `accessToken` (`@db.Text`, server-only), `isDefault` (exactly one row should be default; enforced in application code via a `$transaction` on create/update, not a DB constraint)
 - `AgentWhatsappNumber` — pivot, `@@unique([agentId, whatsappNumberId])`
 - `Conversation` — `status: OPEN | RESOLVED | PENDING`, `windowExpiresAt`, `lastMessageAt`, `whatsappNumberId` (required — which line this thread is on)
