@@ -203,7 +203,7 @@ model Conversation {
   aiMuted          Boolean            @default(false)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
-  contact          Contact            @relation(fields: [contactId], references: [id])
+  contact          Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
   agent            Agent?             @relation(fields: [agentId], references: [id])
   whatsappNumber   WhatsappNumber     @relation(fields: [whatsappNumberId], references: [id])
   messages         Message[]
@@ -235,7 +235,7 @@ model Message {
   // (sentByAgentId stays null for these, same as a CRM-forwarded send).
   sentByAi       Boolean          @default(false)
   createdAt      DateTime         @default(now())
-  conversation   Conversation     @relation(fields: [conversationId], references: [id])
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sentByAgent    Agent?           @relation(fields: [sentByAgentId], references: [id])
 
   @@index([conversationId])
@@ -306,7 +306,7 @@ model BroadcastRecipient {
   metaMessageId String?
   createdAt     DateTime        @default(now())
   broadcast     Broadcast       @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
-  contact       Contact         @relation(fields: [contactId], references: [id])
+  contact       Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([broadcastId])
   @@index([contactId])
