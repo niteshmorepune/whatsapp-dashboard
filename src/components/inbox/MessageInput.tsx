@@ -61,6 +61,13 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const windowExpired = isWindowExpired(windowExpiresAt);
+  // A business-initiated template send never opens the 24h window — only a
+  // genuine inbound reply from the contact does (see wadesk.in's CLAUDE.md,
+  // "24-hour messaging window"). windowExpiresAt is only ever null for a
+  // contact who has never replied, never for one whose window merely
+  // lapsed — that distinction is worth a different message to the agent,
+  // even though both cases block free-form text identically.
+  const neverReplied = windowExpired && windowExpiresAt === null;
 
   // Clean up object URL on attachment change
   useEffect(() => {
@@ -142,7 +149,11 @@ export function MessageInput({
     if (attachment) return sendWithAttachment();
     if (!text.trim() || sending) return;
     if (windowExpired) {
-      toast.error("Window expired. Please use a template.");
+      toast.error(
+        neverReplied
+          ? "This contact hasn't replied yet. Please use a template."
+          : "Window expired. Please use a template."
+      );
       setShowTemplates(true);
       return;
     }
@@ -230,7 +241,9 @@ export function MessageInput({
       <div className="border-t border-gray-800 bg-gray-900 p-3">
         {windowExpired && (
           <p className="text-xs text-red-400 mb-2 px-1">
-            Window expired — use a template to re-engage this contact
+            {neverReplied
+              ? "Awaiting a reply — use a template until this contact responds"
+              : "Window expired — use a template to re-engage this contact"}
           </p>
         )}
 
@@ -276,7 +289,9 @@ export function MessageInput({
               disabled={windowExpired || sending}
               placeholder={
                 windowExpired
-                  ? "Window expired — use template"
+                  ? neverReplied
+                    ? "Awaiting reply — use a template"
+                    : "Window expired — use template"
                   : "Type a message… (Enter to send, Shift+Enter for newline)"
               }
               rows={1}

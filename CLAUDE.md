@@ -49,6 +49,7 @@ ANTHROPIC_API_KEY=
 CRM_WEBHOOK_URL=
 CRM_WEBHOOK_TOKEN=
 CRM_LEAD_CONTEXT_URL=
+CRM_MESSAGE_FAILED_URL=
 ```
 
 `ANTHROPIC_API_KEY` powers the AI after-hours assistant (see below) — if unset, `generateAiReply()` logs and returns `null`, so inbound messages are still recorded normally, just with no auto-reply.
@@ -323,6 +324,27 @@ to exactly the shape this app sent before this change — so the two apps can
 be deployed in either order without a real-traffic gap; the CRM should still
 be deployed first regardless, since that's the intended rollout order (see
 the CRM's own PR for this feature).
+
+### CRM notification — message delivery failure (`notifyCrmMessageFailed()`, added 2026-08-23)
+Closes a real gap: the CRM's Visibility Audit jobs (first invite/recovery
+nudge/payment confirmation, all via `POST /api/send-template`) only ever
+know whether this app's synchronous response ACCEPTED the send — never
+whether WhatsApp actually delivered it. Meta's real outcome arrives later,
+asynchronously, via this app's own `handleStatusUpdate()` (see "Real-time
+(Server-Sent Events)" — same handler that already persists `errorCode`/
+`errorMessage` on the `Message` row and broadcasts `message-status`).
+`handleStatusUpdate()` now also calls `notifyCrmMessageFailed({ messageId,
+errorCode, errorMessage })` whenever a message flips to `FAILED` — `messageId`
+is this app's own `Message.id`, the exact value `/api/send-template`'s
+response already returns, which the CRM's 3 jobs persist on their own touch
+row's `meta.wadesk_message_id` for exactly this reason. Called unconditionally
+for every FAILED message, not just ones this app can identify as CRM-
+originated — the CRM's `WadeskMessageStatusController` does that matching
+(an unrecognized `message_id` is a harmless no-op there), so this app carries
+no CRM-origin tracking of its own. `CRM_MESSAGE_FAILED_URL` (new env var,
+reuses `CRM_WEBHOOK_TOKEN`, same pattern as `CRM_LEAD_CONTEXT_URL`) must be
+set for this to actually fire — same "ships inert until configured" contract
+as every other optional integration in this app.
 
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.

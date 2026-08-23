@@ -4,7 +4,7 @@ import { broadcastToAgents, getConnectedAgentIds } from "@/lib/sse";
 import { sendPushToAgents } from "@/lib/webpush";
 import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 import { maybeReplyWithAi } from "@/lib/ai-assistant";
-import { notifyCrm } from "@/lib/crm-notify";
+import { notifyCrm, notifyCrmMessageFailed } from "@/lib/crm-notify";
 import { extractStatusError } from "@/lib/meta";
 import { isOptOutMessage } from "@/lib/opt-out";
 import type { WhatsappNumber } from "@prisma/client";
@@ -317,6 +317,14 @@ async function handleStatusUpdate(status: {
     status: newStatus,
     errorMessage: statusError?.message ?? null,
   });
+
+  if (newStatus === "FAILED") {
+    notifyCrmMessageFailed({
+      messageId: message.id,
+      errorCode: statusError?.code ?? null,
+      errorMessage: statusError?.message ?? null,
+    });
+  }
 
   return updated;
 }

@@ -109,6 +109,13 @@ const SECTIONS: Section[] = [
             If 24 hours pass without the customer messaging, the window expires. You will see a red
             &quot;Window expired&quot; banner in the chat and the message input will be disabled.
           </p>
+          <p className="text-sm text-gray-300">
+            A business-initiated template message (e.g. a Broadcast, or a lead invite the CRM sends)
+            never opens this window by itself — only a real reply from the contact does. So a brand-new
+            conversation can show &quot;Awaiting a reply&quot; immediately after your first message goes
+            out, even though nothing has technically expired yet — it just means the contact hasn&apos;t
+            replied. The restriction is identical either way: only templates until they respond.
+          </p>
         </div>
         <div className="space-y-3">
           <p className="text-sm font-medium text-white">What to do when the window is expired:</p>

@@ -34,6 +34,10 @@ export function WindowBanner({ windowExpiresAt }: WindowBannerProps) {
   if (timeLeft > twoHours) return null;
 
   const isExpired = timeLeft <= 0;
+  // See MessageInput's identical check for why this distinction matters —
+  // windowExpiresAt is only ever null for a contact who has never replied,
+  // never for one whose window genuinely lapsed.
+  const neverReplied = isExpired && windowExpiresAt === null;
 
   return (
     <div
@@ -46,7 +50,9 @@ export function WindowBanner({ windowExpiresAt }: WindowBannerProps) {
       <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
       {isExpired ? (
         <span>
-          24-hour messaging window has expired. You can only send approved templates.
+          {neverReplied
+            ? "This contact hasn't replied yet — you can only send approved templates until they do."
+            : "24-hour messaging window has expired. You can only send approved templates."}
         </span>
       ) : (
         <span className="flex items-center gap-1.5">
