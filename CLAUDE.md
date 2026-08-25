@@ -233,6 +233,23 @@ lead going unanswered until the next business day.
   block a human agent from replying manually — only Broadcasts (already
   checked `optedOut` before this) and `maybeReplyWithAi()` (now also checks
   it, see above) skip an opted-out contact.
+- **Auto-responder detection (added 2026-08-25)**: `looksLikeAutoResponder()`
+  (`src/lib/ai-assistant.ts`) matches an inbound message against a bounded,
+  hardcoded list of common canned away-message phrases ("thank you for
+  contacting", "we're unavailable", "will respond as soon as possible",
+  "outside business hours", "this is an automated reply", "currently out of
+  office") — checked in `maybeReplyWithAi()` right after the existing
+  empty-content skip, before anything is drafted. Built after a real
+  incident: "varun Aqua Sales and Service"'s own WhatsApp Business
+  away-message fired once (a stale "...Happy new year" greeting), and the
+  AI answered it as a genuine customer message, echoing "Happy New Year"
+  back in August. This is a real gap the *earlier* bot-to-bot fix (empty-
+  content skip + the concurrent-message-race lock above + a per-conversation
+  cooldown that stops a SECOND AI reply once one already exists) never
+  closed: none of those guards do anything for the FIRST auto-responder
+  ping in a conversation, only repeats of it. This new guard is deliberately
+  a plain phrase match (same style as `isOptOutMessage()` above), not an
+  extra Anthropic classification call, to keep it fast and free.
 - **`Conversation.aiMuted`** — set to `true` unconditionally by `POST
   /api/send` on every send (a session agent's own send, or a CRM-forwarded
   staff reply via the service key — both are "a human is handling this,"
