@@ -35,6 +35,35 @@ const AUTO_REPLY_COOLDOWN_MINUTES = 5;
 // should look at these instead.
 const NO_TEXT_CONTENT_PATTERN = /^\[.+\]$/;
 
+// Neither of the two guards above catches a message that has real, well-formed
+// text but wasn't actually written by a human — the OTHER side's own WhatsApp
+// Business greeting/away-message auto-responder. Real incident (2026-08-25,
+// "varun Aqua Sales and Service", same contact as the cooldown fix above):
+// their auto-responder's stale "...Happy new year" greeting fired once (so the
+// cooldown never engaged — that guard only stops a SECOND reply to repeated
+// bot pings, it never stops the first one), and the AI answered it as if a
+// person had written it, mirroring "Happy New Year" back in August. Bounded,
+// case-insensitive phrase list — same discipline as this repo's opt-out
+// keyword matching (src/lib/opt-out.ts) — matched against the raw inbound
+// text, not the whole conversation, so a real customer who happens to
+// mention e.g. "your business hours" mid-sentence isn't falsely caught (these
+// patterns anchor on the specific canned phrasing auto-responders actually
+// use, not generic business-hours vocabulary).
+const AUTO_RESPONDER_PATTERNS: RegExp[] = [
+  /thank(s| you) for (contacting|your (message|inquiry|interest)|reaching out)/i,
+  /we('re| are) (currently )?unavailable/i,
+  /will (respond|get back to you|reply) (as soon as possible|shortly|soon)/i,
+  /(outside|beyond) (of )?(our )?(business|working) hours/i,
+  /this is an automat(ed|ic) (reply|response|message)/i,
+  /currently (out of office|on leave|away)/i,
+];
+
+function looksLikeAutoResponder(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  return AUTO_RESPONDER_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
 // In-process lock, one entry per conversation currently drafting/sending a
 // reply. Real incident (2026-08-19/20, leads #66/#72): two inbound
 // messages arriving close together each called maybeReplyWithAi()
@@ -77,6 +106,7 @@ export async function maybeReplyWithAi(
     if (conversation.aiMuted) return;
     if (contact.optedOut) return;
     if (NO_TEXT_CONTENT_PATTERN.test(triggeringMessageContent.trim())) return;
+    if (looksLikeAutoResponder(triggeringMessageContent)) return;
 
     const holidayDateKeys = await getHolidayDateKeys();
     const isLive = resolveAiLiveState(
