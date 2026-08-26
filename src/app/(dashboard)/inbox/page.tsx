@@ -1,12 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { ConversationList } from "@/components/inbox/ConversationList";
 import { ThreadView } from "@/components/inbox/ThreadView";
+import { TemplatePrefill } from "@/components/inbox/MessageInput";
 
-export default function InboxPage() {
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+// Deep link support: ?conversation=<id>&template=<name>&var1=<value>&buttonParam=<value>
+// — e.g. the CRM's Visibility Audit recovery worklist links straight into a
+// lead's own conversation with the right recovery template ready to review.
+// `prefill` is only ever applied to the conversation the link itself named
+// (see handleSelect below) so clicking into a different conversation
+// afterwards never carries a stale template prefill with it.
+function InboxContent() {
+  const searchParams = useSearchParams();
+  const initialConversationId = searchParams.get("conversation");
+
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
+    initialConversationId
+  );
+  const [prefill, setPrefill] = useState<TemplatePrefill | null>(() => {
+    const templateName = searchParams.get("template");
+    if (!initialConversationId || !templateName) return null;
+    return {
+      templateName,
+      var1: searchParams.get("var1") ?? undefined,
+      buttonUrlParam: searchParams.get("buttonParam") ?? undefined,
+    };
+  });
+
+  function handleSelect(id: string) {
+    if (id !== selectedConversationId) setPrefill(null);
+    setSelectedConversationId(id);
+  }
 
   return (
     <div className="h-full flex">
@@ -16,10 +43,7 @@ export default function InboxPage() {
           selectedConversationId ? "hidden lg:flex" : "flex"
         } w-full lg:w-80 xl:w-96 flex-col flex-shrink-0`}
       >
-        <ConversationList
-          selectedId={selectedConversationId}
-          onSelect={(id) => setSelectedConversationId(id)}
-        />
+        <ConversationList selectedId={selectedConversationId} onSelect={handleSelect} />
       </div>
 
       {/* Thread view - 2/3 width on desktop */}
@@ -39,7 +63,11 @@ export default function InboxPage() {
                 ← Back to conversations
               </button>
             </div>
-            <ThreadView key={selectedConversationId} conversationId={selectedConversationId} />
+            <ThreadView
+              key={selectedConversationId}
+              conversationId={selectedConversationId}
+              prefill={prefill}
+            />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-600 bg-gray-950">
@@ -52,5 +80,13 @@ export default function InboxPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function InboxPage() {
+  return (
+    <Suspense fallback={null}>
+      <InboxContent />
+    </Suspense>
   );
 }

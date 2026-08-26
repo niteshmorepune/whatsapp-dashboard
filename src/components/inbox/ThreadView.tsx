@@ -6,7 +6,7 @@ import { format, isToday, isYesterday } from "date-fns";
 import { CheckCircle, Phone, Loader2, ChevronUp, Bot } from "lucide-react";
 import { Conversation, Message } from "@/types";
 import { MessageBubble } from "./MessageBubble";
-import { MessageInput } from "./MessageInput";
+import { MessageInput, TemplatePrefill } from "./MessageInput";
 import { WindowBanner } from "./WindowBanner";
 import { AssignAgent } from "./AssignAgent";
 import { Badge } from "@/components/ui/Badge";
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 interface ThreadViewProps {
   conversationId: string;
+  prefill?: TemplatePrefill | null;
 }
 
 function DateDivider({ date }: { date: string }) {
@@ -31,7 +32,7 @@ function DateDivider({ date }: { date: string }) {
   );
 }
 
-export function ThreadView({ conversationId }: ThreadViewProps) {
+export function ThreadView({ conversationId, prefill }: ThreadViewProps) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -278,6 +279,7 @@ export function ThreadView({ conversationId }: ThreadViewProps) {
           conversationId={conversationId}
           windowExpiresAt={conversation.windowExpiresAt}
           onMessageSent={fetchData}
+          prefill={prefill}
         />
       </div>
     </div>

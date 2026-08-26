@@ -36,16 +36,32 @@ const EmojiPicker = dynamic(
   { ssr: false }
 );
 
+// A deep link (e.g. from the CRM's Visibility Audit recovery worklist) can
+// name a template to have ready before the agent even opens the composer —
+// var1 fills the template's first {{1}} body placeholder, buttonUrlParam
+// fills a Dynamic-URL button, mirroring the same values the matching
+// automated recovery-nudge job would have sent. Applied once per
+// conversation mount (see the effect below) — it always stops at the
+// variable-review modal for the agent to check and hit Send themselves,
+// never sends on its own.
+export interface TemplatePrefill {
+  templateName: string;
+  var1?: string;
+  buttonUrlParam?: string;
+}
+
 interface MessageInputProps {
   conversationId: string;
   windowExpiresAt: string | null;
   onMessageSent: () => void;
+  prefill?: TemplatePrefill | null;
 }
 
 export function MessageInput({
   conversationId,
   windowExpiresAt,
   onMessageSent,
+  prefill,
 }: MessageInputProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -101,6 +117,38 @@ export function MessageInput({
       setShowTemplates(true);
     }
   }, [windowExpired]);
+
+  // Deep-link prefill: fetch templates up front (rather than waiting for
+  // the agent to open the picker) and, once loaded, apply the named
+  // template — runs once per mount, so a fresh deep link (a new
+  // conversation, remounting this component) always re-applies, but
+  // switching to a DIFFERENT conversation in the same session never
+  // carries a stale prefill (ThreadView only ever passes a non-null
+  // prefill for the conversation the link actually named — see
+  // inbox/page.tsx).
+  useEffect(() => {
+    if (!prefill?.templateName) return;
+    let cancelled = false;
+    axios
+      .get("/api/templates")
+      .then((r) => {
+        if (cancelled) return;
+        const approved: Template[] = r.data.filter((t: Template) => t.isApproved);
+        setTemplates(approved);
+        const match = approved.find((t) => t.name === prefill.templateName);
+        if (match) {
+          applyPrefillTemplate(match, prefill);
+        } else {
+          toast.error(`Template "${prefill.templateName}" not found on wadesk — pick one manually`);
+          setShowTemplates(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -193,6 +241,20 @@ export function MessageInput({
     setVariableTemplate(template);
     setVariableValues(Array(paramCount).fill(""));
     setButtonUrlValue("");
+    setShowTemplates(false);
+  }
+
+  // Same as selectTemplate() but pre-fills from a deep-link TemplatePrefill
+  // instead of blank values, and always stops at the review modal — even
+  // for a template with no placeholders at all — since a deep-linked send
+  // still needs a human to actually hit Send.
+  function applyPrefillTemplate(template: Template, prefill: TemplatePrefill) {
+    const paramCount = templateParamCount(template.content);
+    const values = Array(paramCount).fill("");
+    if (paramCount > 0 && prefill.var1) values[0] = prefill.var1;
+    setVariableTemplate(template);
+    setVariableValues(values);
+    setButtonUrlValue(prefill.buttonUrlParam ?? "");
     setShowTemplates(false);
   }
 
