@@ -82,6 +82,21 @@ export async function POST(request: NextRequest) {
       update: {},
     });
 
+    // Same rule /api/broadcasts/[id]/send already enforces: once a contact
+    // has opted out (an inbound "stop"/"stop promotions"/etc., see
+    // lib/opt-out.ts), a MARKETING-category template must never go out to
+    // them, regardless of which caller triggered it. This is the one place
+    // every CRM-triggered send-template call (recovery nudge, first invite,
+    // handoff, report, payment confirmation, quotation) funnels through, so
+    // gating here covers all of them at once rather than requiring each CRM
+    // job to know about opt-out state it has no local copy of. UTILITY/
+    // AUTHENTICATION/SERVICE templates are unaffected — opting out of
+    // promotions was never a request to stop transactional messages like a
+    // payment confirmation or a requested quotation.
+    if (contact.optedOut && template.category === "MARKETING") {
+      return NextResponse.json({ skipped: true, reason: "opted_out" }, { status: 200 });
+    }
+
     let conversation = await prisma.conversation.findFirst({
       where: { contactId: contact.id, whatsappNumberId: whatsappNumber.id, status: { in: ["OPEN", "PENDING"] } },
       orderBy: { lastMessageAt: "desc" },
