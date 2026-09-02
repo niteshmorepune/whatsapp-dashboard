@@ -18,8 +18,13 @@ export const dynamic = "force-dynamic";
  *
  * Idempotent by (phone, businessNumber): if a Conversation already exists
  * for this contact on this line (e.g. the lead actually messaged in first
- * and /api/webhook already created it), this just re-points its agentId —
- * it never creates a duplicate.
+ * and /api/webhook already created it), this just ensures the CRM's
+ * resolved rep is among its assignees — it never creates a duplicate.
+ *
+ * Fully-equal multi-agent assignment (2026-09-02): the CRM's owner is
+ * ADDED to whatever assignees already exist (a second Support agent
+ * assigned directly in wadesk is never silently dropped by a later CRM
+ * sync ping) — never a full replace.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -62,32 +67,41 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Only re-point agentId when a resolvable, authorized agent is given —
-    // an unresolved/omitted agentEmail leaves any existing assignment alone
-    // rather than silently unassigning it.
+    // Only add an assignee when a resolvable, authorized agent is given —
+    // an unresolved/omitted agentEmail leaves existing assignees alone
+    // rather than touching them.
+    let assignedAgentId: string | null = null;
     if (agentEmail) {
       const agent = await prisma.agent.findUnique({ where: { email: agentEmail } });
       if (agent && agent.isActive) {
         const allowed = await agentHasAccessToNumber(agent.id, agent.role, whatsappNumber.id);
-        if (allowed && conversation.agentId !== agent.id) {
-          conversation = await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: { agentId: agent.id },
+        if (allowed) {
+          const alreadyAssigned = await prisma.conversationAssignee.findUnique({
+            where: { conversationId_agentId: { conversationId: conversation.id, agentId: agent.id } },
           });
+
+          await prisma.conversationAssignee.upsert({
+            where: { conversationId_agentId: { conversationId: conversation.id, agentId: agent.id } },
+            create: { conversationId: conversation.id, agentId: agent.id },
+            update: {},
+          });
+          assignedAgentId = agent.id;
 
           const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
           const updatedConversation = await prisma.conversation.findUnique({
             where: { id: conversation.id },
-            include: { contact: true, agent: true },
+            include: { contact: true, assignees: { include: { agent: true } } },
           });
           broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: updatedConversation });
-          sendToAgent(agent.id, "conversation-assigned", { conversation: updatedConversation, assignedBy: "CRM" });
+          if (!alreadyAssigned) {
+            sendToAgent(agent.id, "conversation-assigned", { conversation: updatedConversation, assignedBy: "CRM" });
+          }
         }
       }
     }
 
     return NextResponse.json(
-      { conversationId: conversation.id, contactId: contact.id, agentId: conversation.agentId },
+      { conversationId: conversation.id, contactId: contact.id, agentId: assignedAgentId },
       { status: 200 }
     );
   } catch (error) {

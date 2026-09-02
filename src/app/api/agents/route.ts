@@ -23,7 +23,7 @@ export async function GET() {
         isActive: true,
         createdAt: true,
         updatedAt: true,
-        _count: { select: { conversations: true } },
+        _count: { select: { assignedConversations: true } },
         whatsappNumberGrants: {
           select: { whatsappNumber: { select: { id: true, label: true, businessNumber: true } } },
         },

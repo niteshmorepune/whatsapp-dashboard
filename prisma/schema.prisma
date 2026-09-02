@@ -62,7 +62,7 @@ model Agent {
   isActive          Boolean               @default(true)
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
-  conversations     Conversation[]
+  assignedConversations ConversationAssignee[]
   messages          Message[]
   contactNotes      ContactNote[]
   broadcasts        Broadcast[]
@@ -192,7 +192,6 @@ model Contact {
 model Conversation {
   id               String             @id @default(cuid())
   contactId        String
-  agentId          String?
   whatsappNumberId String
   status           ConversationStatus @default(OPEN)
   lastMessageAt    DateTime           @default(now())
@@ -204,15 +203,35 @@ model Conversation {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   contact          Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  agent            Agent?             @relation(fields: [agentId], references: [id])
   whatsappNumber   WhatsappNumber     @relation(fields: [whatsappNumberId], references: [id])
   messages         Message[]
+  assignees        ConversationAssignee[]
 
   @@index([contactId])
-  @@index([agentId])
   @@index([whatsappNumberId])
   @@index([status])
   @@index([lastMessageAt])
+}
+
+// Fully equal multi-agent assignment (added 2026-09-02) — no "primary"
+// agent. A contact whose WhatsApp is genuinely handled by more than one
+// Support agent needs every one of them to show as assigned and be able
+// to reply, not just whoever happens to hold the single slot. Replying was
+// never actually gated by Conversation.agentId (POST /api/send only checks
+// line-level AgentWhatsappNumber access — see whatsapp-numbers.ts), so this
+// table is purely about accurate routing/display/notification, not access
+// control, same as the single-agentId field it replaces.
+model ConversationAssignee {
+  id             String       @id @default(cuid())
+  conversationId String
+  agentId        String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, agentId])
+  @@index([conversationId])
+  @@index([agentId])
 }
 
 model Message {

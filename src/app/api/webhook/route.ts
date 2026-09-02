@@ -241,7 +241,7 @@ async function handleInboundMessage(
     where: { id: conversation.id },
     include: {
       contact: true,
-      agent: true,
+      assignees: { include: { agent: true } },
     },
   });
 

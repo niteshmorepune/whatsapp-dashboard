@@ -163,7 +163,7 @@ export async function maybeReplyWithAi(
     const updatedConversation = await prisma.conversation.update({
       where: { id: conversation.id },
       data: { lastMessageAt: new Date() },
-      include: { contact: true, agent: true },
+      include: { contact: true, assignees: { include: { agent: true } } },
     });
 
     notifyCrm({

@@ -65,10 +65,17 @@ export interface Contact {
   updatedAt: string;
 }
 
+export interface ConversationAssignee {
+  id: string;
+  conversationId: string;
+  agentId: string;
+  createdAt: string;
+  agent: Pick<Agent, "id" | "name" | "role">;
+}
+
 export interface Conversation {
   id: string;
   contactId: string;
-  agentId: string | null;
   whatsappNumberId: string;
   status: ConversationStatus;
   lastMessageAt: string;
@@ -77,7 +84,11 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   contact: Contact;
-  agent: Agent | null;
+  // Fully equal multi-agent assignment (2026-09-02) — no single "agent"
+  // field anymore. Always present on a fetched conversation (possibly
+  // empty); optional only because some payloads (e.g. SSE deltas) may omit
+  // it.
+  assignees?: ConversationAssignee[];
   whatsappNumber?: WhatsappNumber;
   messages?: Message[];
   _count?: { messages: number };

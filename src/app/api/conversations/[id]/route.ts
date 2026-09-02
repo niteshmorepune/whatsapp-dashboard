@@ -18,7 +18,7 @@ export async function GET(
       where: { id: params.id },
       include: {
         contact: true,
-        agent: true,
+        assignees: { include: { agent: true } },
         whatsappNumber: {
           select: { id: true, label: true, businessNumber: true, aiMode: true, businessHours: true },
         },
@@ -61,7 +61,12 @@ export async function PATCH(
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { status, agentId, aiMuted } = body;
+    // Assignment is handled exclusively by /api/conversations/[id]/assignees
+    // now (multi-agent, added 2026-09-02) — this route only ever touches
+    // status/aiMuted. A stray `agentId` in the body is silently ignored
+    // rather than erroring, since older cached frontend code could still
+    // send it during a rolling deploy.
+    const { status, aiMuted } = body;
 
     const existing = await prisma.conversation.findUnique({ where: { id: params.id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -73,23 +78,13 @@ export async function PATCH(
     );
     if (!requesterAllowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    if (agentId) {
-      const assignee = await prisma.agent.findUnique({ where: { id: agentId }, select: { role: true } });
-      const assigneeAllowed =
-        !!assignee && (await agentHasAccessToNumber(agentId, assignee.role, existing.whatsappNumberId));
-      if (!assigneeAllowed) {
-        return NextResponse.json({ error: "Agent does not have access to this conversation's line" }, { status: 400 });
-      }
-    }
-
     const updated = await prisma.conversation.update({
       where: { id: params.id },
       data: {
         ...(status && { status }),
-        ...(agentId !== undefined && { agentId }),
         ...(typeof aiMuted === "boolean" && { aiMuted }),
       },
-      include: { contact: true, agent: true },
+      include: { contact: true, assignees: { include: { agent: true } } },
     });
 
     const eligibleAgentIds = await getAgentIdsWithNumberAccess(existing.whatsappNumberId);

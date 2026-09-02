@@ -403,9 +403,9 @@ export function ContactDetail({
                       {conv.messages[0].content}
                     </p>
                   )}
-                  {conv.agent && (
+                  {conv.assignees && conv.assignees.length > 0 && (
                     <p className="text-xs text-gray-600 mt-1">
-                      Assigned: {conv.agent.name}
+                      Assigned: {conv.assignees.map((a) => a.agent.name).join(", ")}
                     </p>
                   )}
                 </div>

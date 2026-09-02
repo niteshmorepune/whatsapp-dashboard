@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         contact: true,
-        agent: true,
+        assignees: { include: { agent: true } },
         whatsappNumber: { select: { id: true, label: true, businessNumber: true } },
         messages: {
           orderBy: { createdAt: "desc" },
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
         status: "OPEN",
         lastMessageAt: new Date(),
       },
-      include: { contact: true, agent: true, whatsappNumber: true },
+      include: { contact: true, assignees: { include: { agent: true } }, whatsappNumber: true },
     });
 
     return NextResponse.json(conversation, { status: 201 });

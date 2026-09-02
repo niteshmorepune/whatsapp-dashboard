@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
     const updatedConversation = await prisma.conversation.update({
       where: { id: conversation.id },
       data: { lastMessageAt: new Date() },
-      include: { contact: true, agent: true },
+      include: { contact: true, assignees: { include: { agent: true } } },
     });
 
     const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);

@@ -66,9 +66,9 @@ export function ConversationItem({
           )}
         </div>
 
-        {conversation.agent && (
-          <span className="text-xs text-gray-600 mt-0.5 block">
-            Assigned: {conversation.agent.name}
+        {conversation.assignees && conversation.assignees.length > 0 && (
+          <span className="text-xs text-gray-600 mt-0.5 block truncate">
+            Assigned: {conversation.assignees.map((a) => a.agent.name).join(", ")}
           </span>
         )}
       </div>

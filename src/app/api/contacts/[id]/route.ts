@@ -20,7 +20,7 @@ export async function GET(
               orderBy: { createdAt: "desc" },
               take: 1,
             },
-            agent: true,
+            assignees: { include: { agent: true } },
           },
           orderBy: { lastMessageAt: "desc" },
         },

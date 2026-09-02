@@ -48,12 +48,19 @@ export async function GET() {
       prisma.agent.findMany({
         where: { isActive: true },
         include: {
-          conversations: {
+          // Fully-equal multi-agent assignment (2026-09-02): "handled" now
+          // credits every agent assigned to a conversation, not just one -
+          // a conversation with 2 assignees counts toward both.
+          assignedConversations: {
             include: {
-              messages: {
-                where: { direction: "OUTBOUND" },
-                orderBy: { createdAt: "asc" },
-                take: 1,
+              conversation: {
+                include: {
+                  messages: {
+                    where: { direction: "OUTBOUND" },
+                    orderBy: { createdAt: "asc" },
+                    take: 1,
+                  },
+                },
               },
             },
           },
@@ -86,10 +93,11 @@ export async function GET() {
 
     // Agent performance
     const agentPerformance = agents.map((agent) => {
-      const handled = agent.conversations.length;
+      const conversations = agent.assignedConversations.map((ca) => ca.conversation);
+      const handled = conversations.length;
       const responseTimes: number[] = [];
 
-      for (const conv of agent.conversations) {
+      for (const conv of conversations) {
         const firstReply = conv.messages[0];
         if (firstReply) {
           const diff =

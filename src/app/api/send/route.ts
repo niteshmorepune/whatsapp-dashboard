@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
     const updatedConversation = await prisma.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date(), aiMuted: true },
-      include: { contact: true, agent: true },
+      include: { contact: true, assignees: { include: { agent: true } } },
     });
 
     // SSE broadcast only to agents granted this conversation's line
