@@ -355,9 +355,13 @@ const SECTIONS: Section[] = [
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">What it will and won&apos;t do</p>
           <p className="text-sm text-gray-300">
             It answers questions covered in the AI FAQ page (services, pricing ranges, hours, etc.) and
-            asks for the person&apos;s name and requirement if they haven&apos;t come up yet. It never quotes an
-            exact price, timeline, or commitment that isn&apos;t written in the FAQ — anything it can&apos;t
-            answer from the FAQ, it tells the person the team will follow up during business hours.
+            asks for the person&apos;s name and requirement if they haven&apos;t come up yet. For anything it can&apos;t
+            answer from the FAQ, it tells the person the team will follow up during business hours — and
+            asks one genuine discovery question about their actual requirement or pain point (current
+            setup, what isn&apos;t working, their goal, their timeline), so the team has real context to work
+            with the moment they pick the conversation up. It never quotes an exact price, timeline, or
+            commitment that isn&apos;t written in the FAQ, and never implies an answer to that question
+            changes any quote or promise.
           </p>
         </div>
 
