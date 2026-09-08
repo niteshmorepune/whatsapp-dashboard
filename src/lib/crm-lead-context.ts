@@ -8,6 +8,16 @@ export interface CrmLeadContext {
   budgetQuestionRawAnswer?: string | null;
   additionalAnswers?: string | null;
   visibilityAuditOfferUrl?: string | null;
+  // 2026-09-08 — power the after-hours assistant's own goal-question flow
+  // (see src/lib/goal-flow.ts). goal is one of the CRM's LeadGoal enum
+  // values (e.g. "grow_business") or null if never asked/answered yet, from
+  // ANY channel. needsLink is precomputed CRM-side
+  // (LeadGoal::needsWebsiteOrGbp()) so this app never has to reimplement
+  // that branching.
+  goal?: string | null;
+  needsLink?: boolean;
+  websiteUrl?: string | null;
+  gbpUrl?: string | null;
 }
 
 /**
@@ -56,6 +66,10 @@ export async function getCrmLeadContext(phone: string): Promise<CrmLeadContext |
       budgetQuestionRawAnswer: data.budget_question_raw_answer ?? null,
       additionalAnswers: data.additional_answers ?? null,
       visibilityAuditOfferUrl: data.visibility_audit_offer_url ?? null,
+      goal: data.goal ?? null,
+      needsLink: data.needs_link ?? false,
+      websiteUrl: data.website_url ?? null,
+      gbpUrl: data.gbp_url ?? null,
     };
   } catch (error) {
     console.error("CRM lead-context lookup failed:", error);

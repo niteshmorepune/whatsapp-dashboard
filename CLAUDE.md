@@ -267,6 +267,45 @@ lead going unanswered until the next business day.
   list. The conversations **list** endpoint (`GET /api/conversations`) does
   NOT compute this — it's only needed on the single-conversation/number
   detail views.
+- **Lead-goal capture flow (added 2026-09-09, `src/lib/goal-flow.ts`)**:
+  ported the NEDS CRM's telecaller-facing "what's their biggest goal?"
+  capture (see the CRM repo's own CLAUDE.md, 2026-09-08 entries) onto
+  WhatsApp, so a lead who only ever messages — never gets a call — still
+  goes through goal → Website/GBP-link-or-Sales-handoff. `maybeRunGoalFlow()`
+  is called from `maybeReplyWithAi()` right after all its existing guards
+  (aiMuted/opted-out/auto-responder/business-hours-live/cooldown) already
+  passed — it shares that exact gating rather than duplicating or loosening
+  it, and only ever applies to a phone number the CRM's `GET /api/leads/
+  context` (extended this same day — see `goal`/`needs_link`/`website_url`/
+  `gbp_url` on `CrmLeadContext`) recognises as an open Lead. Deliberately
+  **no Anthropic call anywhere in this flow** — the question is a fixed
+  template, the tapped goal option is matched off the WhatsApp interactive
+  list's own row `id` (new `sendInteractiveListMessage()` in `meta.ts`; a
+  tap's `id` is now also extracted in `api/webhook/route.ts` alongside the
+  existing `.title` extraction, since matching the true "biggest goal"
+  question needs the stable id, not fuzzy free-text), and the link-capture
+  step is a plain regex (`URL_LIKE_PATTERN`) — keeps this deterministic,
+  reliable, and free to run on every eligible after-hours reply. New
+  `Conversation.aiFlowPending` (nullable string: `"goal"` while awaiting the
+  tapped reply, `"link"` while awaiting a Website/GBP reply, `null`
+  otherwise) is the ONLY new persisted state — the actual captured goal/
+  link values live on the CRM's own Lead record, re-fetched fresh each turn
+  rather than duplicated here. New `src/lib/crm-goal-capture.ts`
+  (`postCrmGoalCapture()`) is the write-back, `POST` to the CRM's new
+  `/api/leads/goal-capture` (same `CRM_WEBHOOK_TOKEN` trust boundary as
+  every other CRM call in this file) — unlike `notifyCrm()`'s pure
+  fire-and-forget, this one is awaited (5s timeout, never throws) since the
+  captured value actually drives what the CRM does next (including firing
+  a real "needs Sales" notification to the lead's owner when the answer is
+  "Not Sure" — see the CRM's `LeadObserver`/`LeadWantsExpertAdviceNotification`).
+  If a lead taps something that isn't one of the 4 known row ids, or never
+  replies with a link-shaped answer, the flow gives up gracefully after one
+  attempt (clears `aiFlowPending`, falls through to the normal FAQ/
+  discovery-question reply) rather than nagging on every subsequent
+  message. `.env.local`/`.env.example` need `CRM_LEAD_CONTEXT_URL` (a real,
+  pre-existing gap — this var was already used by `crm-lead-context.ts` but
+  had never actually been added to `.env.example`, caught and fixed
+  alongside this change) and the new `CRM_GOAL_CAPTURE_URL`.
 
 ### AI usage reporting (added 2026-08-05)
 `AiUsage` (id, feature, model, inputTokens, outputTokens, costUsd, createdAt)

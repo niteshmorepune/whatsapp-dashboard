@@ -5,6 +5,7 @@ import { broadcastToAgents } from "@/lib/sse";
 import { generateAiReply } from "@/lib/ai-reply";
 import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/lib/business-hours";
 import { notifyCrm } from "@/lib/crm-notify";
+import { maybeRunGoalFlow } from "@/lib/goal-flow";
 import type { WhatsappNumber, Conversation, Contact } from "@prisma/client";
 
 const CONTEXT_MESSAGE_COUNT = 10;
@@ -97,7 +98,8 @@ export async function maybeReplyWithAi(
   whatsappNumber: WhatsappNumber,
   conversation: Conversation,
   contact: Contact,
-  triggeringMessageContent: string
+  triggeringMessageContent: string,
+  interactiveReplyId: string | null = null
 ): Promise<void> {
   if (conversationsCurrentlyReplying.has(conversation.id)) return;
   conversationsCurrentlyReplying.add(conversation.id);
@@ -127,6 +129,20 @@ export async function maybeReplyWithAi(
     ) {
       return;
     }
+
+    // Lead-goal capture flow (see goal-flow.ts) — shares every guard above
+    // (aiMuted/opted-out/business-hours-live/cooldown) rather than
+    // duplicating them. Fully handles this turn (sends its own message) or
+    // does nothing at all; the normal FAQ/discovery-question reply below
+    // only runs when it declines.
+    const goalFlowHandled = await maybeRunGoalFlow(
+      whatsappNumber,
+      conversation,
+      contact,
+      triggeringMessageContent,
+      interactiveReplyId
+    );
+    if (goalFlowHandled) return;
 
     const recentMessages = await prisma.message.findMany({
       where: { conversationId: conversation.id },

@@ -200,6 +200,13 @@ model Conversation {
   // after-hours assistant stops replying here even if it's still "live" for
   // the line as a whole. Manually reset via the "Resume AI" action.
   aiMuted          Boolean            @default(false)
+  // 2026-09-08 — the only persisted state the goal-question flow needs
+  // (src/lib/goal-flow.ts): "goal" while awaiting the tapped list reply,
+  // "link" while awaiting a Website/GBP reply, null otherwise. The actual
+  // captured goal/link values live on the CRM's own Lead record (fetched
+  // fresh via crm-lead-context.ts each turn), not duplicated here — this
+  // column only ever answers "what are we currently waiting on."
+  aiFlowPending    String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   contact          Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
