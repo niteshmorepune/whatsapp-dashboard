@@ -16,7 +16,7 @@ export async function GET(
       where: { id: params.id },
       select: {
         whatsappNumberId: true,
-        assignees: { select: { agentId: true } },
+        assignees: { select: { agentId: true, coverUntil: true } },
         whatsappNumber: { select: { restrictToOwnLeads: true } },
       },
     });

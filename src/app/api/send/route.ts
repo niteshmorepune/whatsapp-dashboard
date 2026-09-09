@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
-      include: { contact: true, whatsappNumber: true, assignees: { select: { agentId: true } } },
+      include: { contact: true, whatsappNumber: true, assignees: { select: { agentId: true, coverUntil: true } } },
     });
 
     if (!conversation) {

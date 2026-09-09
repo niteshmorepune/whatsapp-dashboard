@@ -249,6 +249,15 @@ model ConversationAssignee {
   // CRM sync never touches. Added 2026-09-09 alongside
   // WhatsappNumber.restrictToOwnLeads.
   crmManaged     Boolean      @default(false)
+  // Set by the CRM's POST /api/leads/set-cover when someone temporarily
+  // covers a colleague's WhatsApp chats while they're on approved leave
+  // (App\Services\LeaveCoverage on the CRM side) — null for every normal
+  // (crmManaged or manual) assignee. An assignee row with a coverUntil in
+  // the past no longer counts toward visibility (see
+  // isConversationVisibleGivenAccess() in whatsapp-numbers.ts) — access
+  // reverts on its own once the leave ends, no separate revoke call needed.
+  // Added 2026-09-09.
+  coverUntil     DateTime?
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)

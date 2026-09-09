@@ -53,23 +53,40 @@ export async function agentHasAccessToNumber(
 }
 
 /**
+ * A crmManaged (owner/telecaller-synced) or MANUAL assignee has no
+ * coverUntil at all and always counts. A temporary leave-cover row (see
+ * POST /api/leads/set-cover) only counts while coverUntil is still in the
+ * future — once the CRM's own leave request ends, its next sync recomputes
+ * coverUntil to "now," and even before that next sync runs the row simply
+ * stops counting here the moment real time passes it. No separate "revoke"
+ * step needed on either side.
+ */
+function isAssigneeActive(a: { coverUntil?: Date | null }): boolean {
+  return a.coverUntil == null || a.coverUntil.getTime() > Date.now();
+}
+
+/** Same rule as isAssigneeActive(), expressed as a Prisma where-fragment for a ConversationAssignee row. */
+const ACTIVE_ASSIGNEE_WHERE = { OR: [{ coverUntil: null }, { coverUntil: { gt: new Date() } }] } as const;
+
+/**
  * Second gate, layered ON TOP of (never instead of) agentHasAccessToNumber —
  * call that first and only reach this once line access is already
  * confirmed. Pure/sync: takes an already-fetched conversation's
  * whatsappNumber.restrictToOwnLeads + assignees, no DB call of its own, so
  * every call site reuses data it already loaded rather than re-querying.
  *
- * A restricted line's UNCLAIMED conversation (no assignees at all) stays
- * visible to every line-granted agent — only a conversation someone has
- * actually been assigned (manually, or via the CRM's owner/telecaller sync)
- * narrows to just its assignees. ADMIN always passes.
+ * A restricted line's UNCLAIMED conversation (no ACTIVE assignees at all —
+ * an expired leave-cover row doesn't count) stays visible to every
+ * line-granted agent — only a conversation someone has actually been
+ * assigned (manually, via the CRM's owner/telecaller sync, or a still-active
+ * leave-cover) narrows to just its active assignees. ADMIN always passes.
  */
 export function isConversationVisibleGivenAccess(
   role: string,
   agentId: string,
   conversation: {
     whatsappNumber?: { restrictToOwnLeads: boolean } | null;
-    assignees?: { agentId: string }[];
+    assignees?: { agentId: string; coverUntil?: Date | null }[];
   }
 ): boolean {
   if (role === "ADMIN") return true;
@@ -77,20 +94,21 @@ export function isConversationVisibleGivenAccess(
   const restricted = conversation.whatsappNumber?.restrictToOwnLeads ?? false;
   if (!restricted) return true;
 
-  const assignees = conversation.assignees ?? [];
-  if (assignees.length === 0) return true;
+  const activeAssignees = (conversation.assignees ?? []).filter(isAssigneeActive);
+  if (activeAssignees.length === 0) return true;
 
-  return assignees.some((a) => a.agentId === agentId);
+  return activeAssignees.some((a) => a.agentId === agentId);
 }
 
 /**
  * Prisma `where` fragment for the conversations list — mirrors
  * isConversationVisibleGivenAccess()'s rule (unclaimed-or-mine on a
- * restricted line) but expressed as a query filter since a bulk list can't
- * call a per-row function. Merge into an existing `where` object (its only
- * key is `OR`, which nothing else in that route sets, so it's safe to
- * combine via a straight object spread/assign — Prisma ANDs sibling keys).
- * Returns `{}` for ADMIN or when no line currently has the flag set.
+ * restricted line, expired leave-cover rows not counting) but expressed as
+ * a query filter since a bulk list can't call a per-row function. Merge
+ * into an existing `where` object (its only key is `OR`, which nothing else
+ * in that route sets, so it's safe to combine via a straight object
+ * spread/assign — Prisma ANDs sibling keys). Returns `{}` for ADMIN or when
+ * no line currently has the flag set.
  */
 export async function conversationVisibilityWhere(
   agentId: string,
@@ -109,8 +127,8 @@ export async function conversationVisibilityWhere(
   return {
     OR: [
       { whatsappNumberId: { notIn: restrictedIds } },
-      { whatsappNumberId: { in: restrictedIds }, assignees: { none: {} } },
-      { whatsappNumberId: { in: restrictedIds }, assignees: { some: { agentId } } },
+      { whatsappNumberId: { in: restrictedIds }, assignees: { none: ACTIVE_ASSIGNEE_WHERE } },
+      { whatsappNumberId: { in: restrictedIds }, assignees: { some: { agentId, ...ACTIVE_ASSIGNEE_WHERE } } },
     ],
   };
 }
@@ -123,19 +141,19 @@ export async function conversationVisibilityWhere(
 export async function getEligibleAgentIdsForConversation(conversation: {
   whatsappNumberId: string;
   whatsappNumber?: { restrictToOwnLeads: boolean } | null;
-  assignees?: { agentId: string }[];
+  assignees?: { agentId: string; coverUntil?: Date | null }[];
 }): Promise<string[]> {
   const lineIds = await getAgentIdsWithNumberAccess(conversation.whatsappNumberId);
 
   const restricted = conversation.whatsappNumber?.restrictToOwnLeads ?? false;
-  const assignees = conversation.assignees ?? [];
-  if (!restricted || assignees.length === 0) return lineIds;
+  const activeAssignees = (conversation.assignees ?? []).filter(isAssigneeActive);
+  if (!restricted || activeAssignees.length === 0) return lineIds;
 
   const admins = await prisma.agent.findMany({
     where: { role: "ADMIN", isActive: true },
     select: { id: true },
   });
-  const allowed = new Set([...admins.map((a) => a.id), ...assignees.map((a) => a.agentId)]);
+  const allowed = new Set([...admins.map((a) => a.id), ...activeAssignees.map((a) => a.agentId)]);
 
   return lineIds.filter((id) => allowed.has(id));
 }

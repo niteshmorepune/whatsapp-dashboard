@@ -30,7 +30,7 @@ export async function POST(
     const existing = await prisma.conversation.findUnique({
       where: { id: params.id },
       include: {
-        assignees: { select: { agentId: true } },
+        assignees: { select: { agentId: true, coverUntil: true } },
         whatsappNumber: { select: { restrictToOwnLeads: true } },
       },
     });

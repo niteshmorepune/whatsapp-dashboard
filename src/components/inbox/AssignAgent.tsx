@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { UserPlus, X, Loader2 } from "lucide-react";
+import { UserPlus, X, Loader2, Clock } from "lucide-react";
 import { Conversation } from "@/types";
 import { toast } from "sonner";
 
@@ -72,9 +72,11 @@ export function AssignAgent({ conversation, onAssigned }: AssignAgentProps) {
       {assignees.map((a) => (
         <span
           key={a.agentId}
+          title={a.coverUntil ? `Covering until ${new Date(a.coverUntil).toLocaleString()}` : undefined}
           className="inline-flex items-center gap-1 bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1"
         >
           {a.agent.name}
+          {a.coverUntil && <Clock className="w-3 h-3 text-amber-400" />}
           <button
             type="button"
             onClick={() => handleRemove(a.agentId, a.agent.name)}

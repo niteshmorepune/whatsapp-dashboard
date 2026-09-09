@@ -86,7 +86,7 @@ export async function PATCH(
     const existing = await prisma.conversation.findUnique({
       where: { id: params.id },
       include: {
-        assignees: { select: { agentId: true } },
+        assignees: { select: { agentId: true, coverUntil: true } },
         whatsappNumber: { select: { restrictToOwnLeads: true } },
       },
     });

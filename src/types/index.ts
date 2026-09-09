@@ -73,6 +73,9 @@ export interface ConversationAssignee {
   id: string;
   conversationId: string;
   agentId: string;
+  // Set only for a temporary leave-cover row (CRM's POST /api/leads/set-cover) —
+  // null for a normal (crmManaged owner/telecaller-synced, or manual) assignee.
+  coverUntil?: string | null;
   createdAt: string;
   agent: Pick<Agent, "id" | "name" | "role">;
 }
