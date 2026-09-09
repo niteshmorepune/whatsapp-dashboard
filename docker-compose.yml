@@ -10,6 +10,30 @@ services:
       - META_PHONE_NUMBER_ID=${META_PHONE_NUMBER_ID}
       - META_WABA_ID=${META_WABA_ID}
       - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN}
+      # 2026-09-09 — these were all correctly set in .env but never actually
+      # reached the container: Compose only injects a variable into the
+      # service if it's named here, regardless of what .env defines. Real
+      # incident, caught while wiring CRM_GOAL_CAPTURE_URL through for the
+      # lead-goal-capture flow — `docker compose exec app env` showed NONE
+      # of these present, meaning notifyCrm()/getCrmLeadContext() had been
+      # silently no-op-ing (both fail silently by design when their env
+      # vars are missing), generateAiReply() had been returning null on
+      # every call (ANTHROPIC_API_KEY missing), web push had been silently
+      # failing (VAPID_*), and the CRM's own server-to-server calls into
+      # this app may have been rejected (WADESK_SERVICE_KEY) — since
+      # whenever this file was last in this shape. Not a new gap this
+      # feature introduced; a pre-existing one this feature's own debugging
+      # surfaced.
+      - WADESK_SERVICE_KEY=${WADESK_SERVICE_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CRM_WEBHOOK_URL=${CRM_WEBHOOK_URL}
+      - CRM_WEBHOOK_TOKEN=${CRM_WEBHOOK_TOKEN}
+      - CRM_LEAD_CONTEXT_URL=${CRM_LEAD_CONTEXT_URL}
+      - CRM_MESSAGE_FAILED_URL=${CRM_MESSAGE_FAILED_URL}
+      - CRM_GOAL_CAPTURE_URL=${CRM_GOAL_CAPTURE_URL}
+      - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT}
     depends_on:
       db:
         condition: service_healthy

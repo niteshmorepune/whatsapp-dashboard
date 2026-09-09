@@ -50,7 +50,25 @@ CRM_WEBHOOK_URL=
 CRM_WEBHOOK_TOKEN=
 CRM_LEAD_CONTEXT_URL=
 CRM_MESSAGE_FAILED_URL=
+CRM_GOAL_CAPTURE_URL=
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=
 ```
+(The three `VAPID_*` vars, for web push to agents, were missing from this
+list entirely until the same 2026-09-09 incident below surfaced them —
+another pre-existing documentation gap, not new.)
+
+**All of the above must also be listed in `docker-compose.yml`'s `app.environment:`
+block, or they never reach the running container regardless of what's in
+`.env`** — a real incident (2026-09-09) where `WADESK_SERVICE_KEY`,
+`ANTHROPIC_API_KEY`, every `CRM_*` var, and the `VAPID_*` push-notification
+vars were all correctly set in the VPS's `.env` but silently never reached
+the container, since `docker-compose.yml` only listed a handful of them.
+Every function reading a missing var fails silently by design (see "AI
+failure never breaks the core workflow" below), so this had zero visible
+symptoms — confirm with `docker compose exec app env | grep <VAR>` on the
+VPS after any new env var is added, don't just trust `.env`.
 
 `ANTHROPIC_API_KEY` powers the AI after-hours assistant (see below) — if unset, `generateAiReply()` logs and returns `null`, so inbound messages are still recorded normally, just with no auto-reply.
 
