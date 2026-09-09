@@ -81,6 +81,46 @@ export async function sendTextMessage(
   return { messageId: response.data.messages?.[0]?.id };
 }
 
+export interface InteractiveListRow {
+  id: string;
+  // WhatsApp's own hard limits — Meta rejects the send outright if either
+  // is exceeded, not a soft truncation.
+  title: string; // max 24 characters
+  description?: string; // max 72 characters
+}
+
+/**
+ * A tappable WhatsApp "list" interactive message (more than 3 options —
+ * WhatsApp's other interactive type, quick-reply buttons, caps at 3, hence
+ * "list" rather than "button" here). Currently only used by the after-hours
+ * assistant's goal-question flow (src/lib/goal-flow.ts). A tap comes back
+ * as an inbound webhook event with `interactive.list_reply.id`/`.title` —
+ * see handleInboundMessage in api/webhook/route.ts.
+ */
+export async function sendInteractiveListMessage(
+  config: MetaNumberConfig,
+  to: string,
+  bodyText: string,
+  buttonText: string,
+  rows: readonly InteractiveListRow[]
+): Promise<{ messageId: string }> {
+  const response = await clientFor(config).post(`/${config.phoneNumberId}/messages`, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: bodyText },
+      action: {
+        button: buttonText,
+        sections: [{ rows }],
+      },
+    },
+  });
+  return { messageId: response.data.messages?.[0]?.id };
+}
+
 export async function sendTemplateMessage(
   config: MetaNumberConfig,
   to: string,

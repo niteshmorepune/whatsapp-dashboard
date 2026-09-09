@@ -112,6 +112,12 @@ async function handleInboundMessage(
     msg.errors?.[0]?.title ||
     msg.errors?.[0]?.message ||
     `[${msg.type}]`;
+  // The tapped row/button's own stable id, separate from `content` above
+  // (which only carries its display title) — the goal-question flow
+  // (src/lib/goal-flow.ts) matches on this exact id rather than
+  // fuzzy-parsing free text out of a title.
+  const interactiveReplyId: string | null =
+    msg.interactive?.list_reply?.id || msg.interactive?.button_reply?.id || null;
 
   let mediaUrl: string | null = null;
   let mediaType: string | null = null;
@@ -273,7 +279,7 @@ async function handleInboundMessage(
   // AI after-hours assistant — decides for itself (line's AiMode + business
   // hours/holidays + this conversation's aiMuted flag) whether to reply.
   // Fire-and-forget: never blocks or fails the Meta webhook response.
-  maybeReplyWithAi(whatsappNumber, conversation, contact, content).catch((error) =>
+  maybeReplyWithAi(whatsappNumber, conversation, contact, content, interactiveReplyId).catch((error) =>
     console.error("AI after-hours auto-reply failed:", error)
   );
 }
