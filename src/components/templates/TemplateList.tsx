@@ -65,9 +65,14 @@ export function TemplateList({
             )}
           </div>
 
-          <p className="text-xs text-gray-400 flex-1 leading-relaxed line-clamp-4">
-            {template.content}
-          </p>
+          <div className="relative group/body flex-1">
+            <p className="text-xs text-gray-400 leading-relaxed line-clamp-4">
+              {template.content}
+            </p>
+            <div className="invisible group-hover/body:visible absolute left-0 top-0 z-50 w-80 max-w-[90vw] rounded-xl border border-gray-700 bg-gray-900 p-3 text-xs leading-relaxed text-gray-200 shadow-xl whitespace-pre-line">
+              {template.content}
+            </div>
+          </div>
 
           <div className="flex items-center gap-2 pt-1 border-t border-gray-700">
             <button
