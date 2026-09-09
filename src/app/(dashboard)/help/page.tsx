@@ -303,6 +303,14 @@ const SECTIONS: Section[] = [
           reply window expired, or WhatsApp itself chose not to deliver it. If you don&apos;t see a
           reason, the message failed before this feature existed and there&apos;s no way to recover it.
         </Note>
+        <Note>
+          On a line with &quot;Own Leads Only&quot; turned on (see the Lines section below), a
+          conversation your CRM lead syncs you as owner or telecaller for shows you there
+          automatically — no need to click Assign yourself. If you see a small clock icon next to
+          an assignee&apos;s name, they&apos;re covering that chat temporarily (their colleague is on
+          approved leave) — it disappears on its own once the leave period ends, nothing to remove
+          by hand.
+        </Note>
       </div>
     ),
   },
@@ -328,6 +336,7 @@ const SECTIONS: Section[] = [
           <p className="text-sm font-medium text-white">For Admins — managing lines:</p>
           <Step n={1} text="Numbers page: add a new WhatsApp number (label, the number itself, its Meta Phone Number ID, WABA ID, and access token — all from Meta Business Manager's API Setup screen for that number) or edit an existing one." />
           <Step n={2} text="Agents page: check which lines each agent can see, per agent, when creating or editing them." />
+          <Step n={3} text={'"Own Leads Only" (in a line\'s edit modal): when turned on, a non-admin agent granted that line only sees a conversation once they\'re assigned to it — a brand-new, unclaimed conversation still stays visible to everyone on the line until someone (or the CRM) claims it. Admins always see every conversation regardless. Off by default for every line.'} />
         </div>
         <Note>
           Adding a number here is only half the setup — that number&apos;s WABA also needs to be
