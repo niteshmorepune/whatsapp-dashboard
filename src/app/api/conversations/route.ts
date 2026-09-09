@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { agentHasAccessToNumber, getAgentAccessibleNumberIds } from "@/lib/whatsapp-numbers";
+import { agentHasAccessToNumber, getAgentAccessibleNumberIds, conversationVisibilityWhere } from "@/lib/whatsapp-numbers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
       const accessibleIds = await getAgentAccessibleNumberIds(session.user.id, session.user.role);
       where.whatsappNumberId = { in: accessibleIds };
     }
+
+    // On a line flagged restrictToOwnLeads (see whatsapp-numbers.ts), a
+    // non-admin agent only sees a conversation that's unclaimed or assigned
+    // to them — every other line is unaffected (empty fragment).
+    Object.assign(where, await conversationVisibilityWhere(session.user.id, session.user.role));
 
     const conversations = await prisma.conversation.findMany({
       where,

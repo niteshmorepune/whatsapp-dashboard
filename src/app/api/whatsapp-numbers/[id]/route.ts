@@ -15,7 +15,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { label, businessNumber, phoneNumberId, wabaId, accessToken, isDefault, aiMode, businessHours } = body;
+    const { label, businessNumber, phoneNumberId, wabaId, accessToken, isDefault, aiMode, businessHours, restrictToOwnLeads } = body;
 
     if (aiMode !== undefined && !["AUTO", "FORCE_ON", "FORCE_OFF"].includes(aiMode)) {
       return NextResponse.json({ error: "aiMode must be AUTO, FORCE_ON, or FORCE_OFF" }, { status: 400 });
@@ -42,6 +42,7 @@ export async function PATCH(
           ...(isDefault !== undefined && { isDefault }),
           ...(aiMode !== undefined && { aiMode }),
           ...(businessHours !== undefined && { businessHours }),
+          ...(typeof restrictToOwnLeads === "boolean" && { restrictToOwnLeads }),
         },
         select: {
           id: true,
@@ -52,6 +53,7 @@ export async function PATCH(
           isDefault: true,
           aiMode: true,
           businessHours: true,
+          restrictToOwnLeads: true,
         },
       });
     });

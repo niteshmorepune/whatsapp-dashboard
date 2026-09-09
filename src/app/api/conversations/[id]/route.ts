@@ -3,7 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
-import { agentHasAccessToNumber, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import {
+  agentHasAccessToNumber,
+  isConversationVisibleGivenAccess,
+  getEligibleAgentIdsForConversation,
+} from "@/lib/whatsapp-numbers";
 import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/lib/business-hours";
 
 export async function GET(
@@ -20,7 +24,14 @@ export async function GET(
         contact: true,
         assignees: { include: { agent: true } },
         whatsappNumber: {
-          select: { id: true, label: true, businessNumber: true, aiMode: true, businessHours: true },
+          select: {
+            id: true,
+            label: true,
+            businessNumber: true,
+            aiMode: true,
+            businessHours: true,
+            restrictToOwnLeads: true,
+          },
         },
       },
     });
@@ -35,6 +46,10 @@ export async function GET(
       conversation.whatsappNumberId
     );
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    if (!isConversationVisibleGivenAccess(session.user.role, session.user.id, conversation)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Whether the AI after-hours assistant would currently reply on this
     // conversation's line — informational only, drives the ThreadView badge.
@@ -68,7 +83,13 @@ export async function PATCH(
     // send it during a rolling deploy.
     const { status, aiMuted } = body;
 
-    const existing = await prisma.conversation.findUnique({ where: { id: params.id } });
+    const existing = await prisma.conversation.findUnique({
+      where: { id: params.id },
+      include: {
+        assignees: { select: { agentId: true } },
+        whatsappNumber: { select: { restrictToOwnLeads: true } },
+      },
+    });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const requesterAllowed = await agentHasAccessToNumber(
@@ -77,6 +98,10 @@ export async function PATCH(
       existing.whatsappNumberId
     );
     if (!requesterAllowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    if (!isConversationVisibleGivenAccess(session.user.role, session.user.id, existing)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const updated = await prisma.conversation.update({
       where: { id: params.id },
@@ -87,7 +112,7 @@ export async function PATCH(
       include: { contact: true, assignees: { include: { agent: true } } },
     });
 
-    const eligibleAgentIds = await getAgentIdsWithNumberAccess(existing.whatsappNumberId);
+    const eligibleAgentIds = await getEligibleAgentIdsForConversation(existing);
     broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: updated });
 
     return NextResponse.json(updated);

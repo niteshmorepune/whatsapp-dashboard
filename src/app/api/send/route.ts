@@ -5,7 +5,12 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
 import { sendTextMessage, sendTemplateMessage, sendMediaMessage, extractMetaErrorMessage } from "@/lib/meta";
-import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import {
+  agentHasAccessToNumber,
+  toMetaConfig,
+  isConversationVisibleGivenAccess,
+  getEligibleAgentIdsForConversation,
+} from "@/lib/whatsapp-numbers";
 import { notifyCrm } from "@/lib/crm-notify";
 
 const MEDIA_TYPES = ["image", "document", "audio", "video"] as const;
@@ -42,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
-      include: { contact: true, whatsappNumber: true },
+      include: { contact: true, whatsappNumber: true, assignees: { select: { agentId: true } } },
     });
 
     if (!conversation) {
@@ -56,6 +61,10 @@ export async function POST(request: NextRequest) {
         conversation.whatsappNumberId
       );
       if (!allowed) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      if (!isConversationVisibleGivenAccess(session!.user.role, session!.user.id, conversation)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
@@ -177,8 +186,9 @@ export async function POST(request: NextRequest) {
       include: { contact: true, assignees: { include: { agent: true } } },
     });
 
-    // SSE broadcast only to agents granted this conversation's line
-    const eligibleAgentIds = await getAgentIdsWithNumberAccess(conversation.whatsappNumberId);
+    // SSE broadcast only to agents who can actually see this conversation
+    // (line grant + assignee restriction on a restricted line)
+    const eligibleAgentIds = await getEligibleAgentIdsForConversation(conversation);
     broadcastToAgents(eligibleAgentIds, "new-message", {
       conversationId,
       message,

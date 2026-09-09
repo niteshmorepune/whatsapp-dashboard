@@ -22,6 +22,10 @@ export interface WhatsappNumber {
   aiMode?: AiMode;
   businessHours?: DayHours[] | null;
   aiCurrentlyLive?: boolean;
+  // When true, a non-ADMIN agent granted this line only sees a conversation
+  // once they're one of its assignees (CRM-synced owner/telecaller, or a
+  // manual claim) — an unclaimed conversation stays visible to everyone.
+  restrictToOwnLeads?: boolean;
   _count?: { conversations: number };
 }
 

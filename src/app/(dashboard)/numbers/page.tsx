@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
-import { Plus, Loader2, Pencil, Star, Phone, Bot } from "lucide-react";
+import { Plus, Loader2, Pencil, Star, Phone, Bot, Lock } from "lucide-react";
 import { WhatsappNumber, AiMode, DayHours } from "@/types";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
@@ -55,6 +55,7 @@ export default function NumbersPage() {
   const [editForm, setEditForm] = useState(emptyForm);
   const [aiMode, setAiMode] = useState<AiMode>("AUTO");
   const [businessHours, setBusinessHours] = useState<DayHours[]>(DEFAULT_BUSINESS_HOURS);
+  const [restrictToOwnLeads, setRestrictToOwnLeads] = useState(false);
 
   if (session && session.user.role !== "ADMIN") {
     redirect("/inbox");
@@ -83,6 +84,7 @@ export default function NumbersPage() {
     });
     setAiMode(n.aiMode ?? "AUTO");
     setBusinessHours(n.businessHours && n.businessHours.length ? n.businessHours : DEFAULT_BUSINESS_HOURS);
+    setRestrictToOwnLeads(n.restrictToOwnLeads ?? false);
   }
 
   function updateDayHours(day: number, patch: Partial<DayHours>) {
@@ -120,6 +122,7 @@ export default function NumbersPage() {
         isDefault: editForm.isDefault,
         aiMode,
         businessHours,
+        restrictToOwnLeads,
       };
       if (editForm.accessToken) payload.accessToken = editForm.accessToken;
       await axios.patch(`/api/whatsapp-numbers/${editTarget.id}`, payload);
@@ -186,6 +189,14 @@ export default function NumbersPage() {
                       AI {n.aiCurrentlyLive ? "live now" : "off now"}
                       {n.aiMode && n.aiMode !== "AUTO" ? ` (${n.aiMode === "FORCE_ON" ? "forced on" : "forced off"})` : ""}
                     </Badge>
+                    {n.restrictToOwnLeads && (
+                      <span title="Agents see only conversations assigned to them here">
+                        <Badge variant="blue">
+                          <Lock className="w-3 h-3 mr-1" />
+                          Own leads only
+                        </Badge>
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-500">
                     {n.businessNumber} · phone_number_id {n.phoneNumberId} · added {formatRelativeTime(n.createdAt)}
@@ -302,6 +313,27 @@ export default function NumbersPage() {
               </p>
             </div>
           )}
+        </div>
+
+        <div className="mt-5 pt-5 border-t border-gray-800">
+          <div className="flex items-center gap-2 mb-1">
+            <Lock className="w-4 h-4 text-blue-400" />
+            <h3 className="text-sm font-semibold text-white">Own Leads Only</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            When on, a non-admin agent granted this line only sees a conversation once they&apos;re assigned to
+            it (synced automatically from the CRM&apos;s Lead owner/Telecaller, or claimed manually here). An
+            unclaimed conversation stays visible to every agent on this line. Admins always see everything.
+          </p>
+          <label className="flex items-center gap-2 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              checked={restrictToOwnLeads}
+              onChange={(e) => setRestrictToOwnLeads(e.target.checked)}
+              className="rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+            />
+            Restrict agents to their own assigned conversations on this line
+          </label>
         </div>
 
         <div className="flex gap-3 pt-4">

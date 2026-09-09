@@ -3,7 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents, sendToAgent } from "@/lib/sse";
-import { agentHasAccessToNumber, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import {
+  agentHasAccessToNumber,
+  isConversationVisibleGivenAccess,
+  getEligibleAgentIdsForConversation,
+} from "@/lib/whatsapp-numbers";
 
 /**
  * Adds one agent to a conversation's assignee list (fully equal multi-agent
@@ -23,7 +27,13 @@ export async function POST(
     const { agentId } = await request.json();
     if (!agentId) return NextResponse.json({ error: "agentId is required" }, { status: 400 });
 
-    const existing = await prisma.conversation.findUnique({ where: { id: params.id } });
+    const existing = await prisma.conversation.findUnique({
+      where: { id: params.id },
+      include: {
+        assignees: { select: { agentId: true } },
+        whatsappNumber: { select: { restrictToOwnLeads: true } },
+      },
+    });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const requesterAllowed = await agentHasAccessToNumber(
@@ -32,6 +42,13 @@ export async function POST(
       existing.whatsappNumberId
     );
     if (!requesterAllowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    // A requester who can't currently see this conversation (a restricted
+    // line's chat already claimed by someone else) can't reach in and
+    // assign themselves or a peer onto it either — same rule as viewing.
+    if (!isConversationVisibleGivenAccess(session.user.role, session.user.id, existing)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const assignee = await prisma.agent.findUnique({ where: { id: agentId }, select: { role: true } });
     const assigneeAllowed =
@@ -51,7 +68,11 @@ export async function POST(
       include: { contact: true, assignees: { include: { agent: true } } },
     });
 
-    const eligibleAgentIds = await getAgentIdsWithNumberAccess(existing.whatsappNumberId);
+    const eligibleAgentIds = await getEligibleAgentIdsForConversation({
+      whatsappNumberId: existing.whatsappNumberId,
+      whatsappNumber: existing.whatsappNumber,
+      assignees: updated.assignees,
+    });
     broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: updated });
 
     // Notify the newly-added agent specifically (unless they added themselves).

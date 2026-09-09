@@ -3,7 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
-import { agentHasAccessToNumber, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import {
+  agentHasAccessToNumber,
+  isConversationVisibleGivenAccess,
+  getEligibleAgentIdsForConversation,
+} from "@/lib/whatsapp-numbers";
 
 /**
  * Removes one agent from a conversation's assignee list. Unassigning an
@@ -18,7 +22,13 @@ export async function DELETE(
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const existing = await prisma.conversation.findUnique({ where: { id: params.id } });
+    const existing = await prisma.conversation.findUnique({
+      where: { id: params.id },
+      include: {
+        assignees: { select: { agentId: true } },
+        whatsappNumber: { select: { restrictToOwnLeads: true } },
+      },
+    });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const requesterAllowed = await agentHasAccessToNumber(
@@ -27,6 +37,10 @@ export async function DELETE(
       existing.whatsappNumberId
     );
     if (!requesterAllowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    if (!isConversationVisibleGivenAccess(session.user.role, session.user.id, existing)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     await prisma.conversationAssignee.deleteMany({
       where: { conversationId: params.id, agentId: params.agentId },
@@ -37,7 +51,11 @@ export async function DELETE(
       include: { contact: true, assignees: { include: { agent: true } } },
     });
 
-    const eligibleAgentIds = await getAgentIdsWithNumberAccess(existing.whatsappNumberId);
+    const eligibleAgentIds = await getEligibleAgentIdsForConversation({
+      whatsappNumberId: existing.whatsappNumberId,
+      whatsappNumber: existing.whatsappNumber,
+      assignees: updated.assignees,
+    });
     broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: updated });
 
     return NextResponse.json(updated);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { agentHasAccessToNumber } from "@/lib/whatsapp-numbers";
+import { agentHasAccessToNumber, isConversationVisibleGivenAccess } from "@/lib/whatsapp-numbers";
 
 export async function GET(
   request: NextRequest,
@@ -14,12 +14,20 @@ export async function GET(
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: params.id },
-      select: { whatsappNumberId: true },
+      select: {
+        whatsappNumberId: true,
+        assignees: { select: { agentId: true } },
+        whatsappNumber: { select: { restrictToOwnLeads: true } },
+      },
     });
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const allowed = await agentHasAccessToNumber(session.user.id, session.user.role, conversation.whatsappNumberId);
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    if (!isConversationVisibleGivenAccess(session.user.role, session.user.id, conversation)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const cursor = searchParams.get("cursor");

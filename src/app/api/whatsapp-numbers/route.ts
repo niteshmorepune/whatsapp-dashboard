@@ -30,6 +30,7 @@ export async function GET() {
           wabaId: true,
           aiMode: true,
           businessHours: true,
+          restrictToOwnLeads: true,
           _count: { select: { conversations: true } },
         },
         orderBy: { createdAt: "asc" },

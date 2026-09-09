@@ -89,6 +89,16 @@ model WhatsappNumber {
   // is an India-only business), so no per-number timezone field is stored.
   aiMode         AiMode                @default(AUTO)
   businessHours  Json?
+  // When true, a non-ADMIN agent granted this line only sees a conversation
+  // here once they're one of its ConversationAssignee rows — an unclaimed
+  // conversation (no assignees yet) stays visible to every line-granted
+  // agent so a brand-new inbound message is never invisible to everyone
+  // during the CRM's own queued sync lag. Added 2026-09-09 so the Marketing
+  // line's agent visibility matches the CRM's own Lead ownership model
+  // (Sales owner / Telecaller) instead of every line-granted agent seeing
+  // every conversation. Default false keeps every existing line (Support)
+  // behaving exactly as before — a shared team inbox.
+  restrictToOwnLeads Boolean           @default(false)
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   conversations  Conversation[]
@@ -232,6 +242,13 @@ model ConversationAssignee {
   id             String       @id @default(cuid())
   conversationId String
   agentId        String
+  // True for a row the CRM's own /api/leads/sync placed here (resolved from
+  // Lead.owner_id/telecaller_id) — swapped out automatically on the next
+  // sync call when CRM ownership changes, unlike a MANUAL row (added by an
+  // agent claiming/assigning a conversation directly in wadesk.in), which a
+  // CRM sync never touches. Added 2026-09-09 alongside
+  // WhatsappNumber.restrictToOwnLeads.
+  crmManaged     Boolean      @default(false)
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { agentHasAccessToNumber, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { agentHasAccessToNumber, getEligibleAgentIdsForConversation } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents, sendToAgent } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +19,18 @@ export const dynamic = "force-dynamic";
  * Idempotent by (phone, businessNumber): if a Conversation already exists
  * for this contact on this line (e.g. the lead actually messaged in first
  * and /api/webhook already created it), this just ensures the CRM's
- * resolved rep is among its assignees — it never creates a duplicate.
+ * resolved rep(s) are among its assignees — it never creates a duplicate.
  *
- * Fully-equal multi-agent assignment (2026-09-02): the CRM's owner is
- * ADDED to whatever assignees already exist (a second Support agent
- * assigned directly in wadesk is never silently dropped by a later CRM
- * sync ping) — never a full replace.
+ * 2026-09-09: `agentEmail` (the Lead's Sales owner) and the new
+ * `telecallerEmail` (the Lead's Telecaller) are each resolved and upserted
+ * as a `crmManaged: true` ConversationAssignee — swapped, not accumulated,
+ * on every call: any existing crmManaged row whose agent is no longer one
+ * of the two resolved this time is removed, so a reassigned-away rep stops
+ * seeing this conversation once the CRM's own Lead.owner_id/telecaller_id
+ * changes. A MANUAL assignee (added directly in wadesk, crmManaged=false —
+ * e.g. a second Support agent helping on a thread) is never touched here.
+ * This is also what actually enforces visibility once a line is flagged
+ * WhatsappNumber.restrictToOwnLeads — see whatsapp-numbers.ts.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -34,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { phone, name, businessNumber, agentEmail } = body;
+    const { phone, name, businessNumber, agentEmail, telecallerEmail } = body;
 
     if (!phone || !businessNumber) {
       return NextResponse.json({ error: "phone and businessNumber are required" }, { status: 400 });
@@ -67,41 +73,76 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Only add an assignee when a resolvable, authorized agent is given —
-    // an unresolved/omitted agentEmail leaves existing assignees alone
-    // rather than touching them.
-    let assignedAgentId: string | null = null;
-    if (agentEmail) {
-      const agent = await prisma.agent.findUnique({ where: { email: agentEmail } });
-      if (agent && agent.isActive) {
-        const allowed = await agentHasAccessToNumber(agent.id, agent.role, whatsappNumber.id);
-        if (allowed) {
-          const alreadyAssigned = await prisma.conversationAssignee.findUnique({
-            where: { conversationId_agentId: { conversationId: conversation.id, agentId: agent.id } },
-          });
+    // Resolve each email independently to an active agent with access to
+    // this line — an unresolved/inactive/ineligible email is silently
+    // dropped from the desired set rather than erroring the whole sync
+    // (matches the pre-2026-09-09 behavior for a single agentEmail).
+    const numberId = whatsappNumber.id;
+    const resolveEligibleAgentId = async (email: unknown): Promise<string | null> => {
+      if (!email || typeof email !== "string") return null;
+      const agent = await prisma.agent.findUnique({ where: { email } });
+      if (!agent || !agent.isActive) return null;
+      const allowed = await agentHasAccessToNumber(agent.id, agent.role, numberId);
+      return allowed ? agent.id : null;
+    };
 
-          await prisma.conversationAssignee.upsert({
-            where: { conversationId_agentId: { conversationId: conversation.id, agentId: agent.id } },
-            create: { conversationId: conversation.id, agentId: agent.id },
-            update: {},
-          });
-          assignedAgentId = agent.id;
+    const [ownerAgentId, telecallerAgentId] = await Promise.all([
+      resolveEligibleAgentId(agentEmail),
+      resolveEligibleAgentId(telecallerEmail),
+    ]);
 
-          const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
-          const updatedConversation = await prisma.conversation.findUnique({
-            where: { id: conversation.id },
-            include: { contact: true, assignees: { include: { agent: true } } },
-          });
-          broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: updatedConversation });
-          if (!alreadyAssigned) {
-            sendToAgent(agent.id, "conversation-assigned", { conversation: updatedConversation, assignedBy: "CRM" });
-          }
+    const desiredAgentIds = Array.from(new Set([ownerAgentId, telecallerAgentId].filter((id): id is string => id !== null)));
+
+    const priorCrmManaged = await prisma.conversationAssignee.findMany({
+      where: { conversationId: conversation.id, crmManaged: true },
+      select: { agentId: true },
+    });
+    const priorCrmManagedIds = new Set(priorCrmManaged.map((a) => a.agentId));
+    const newlyAddedIds = desiredAgentIds.filter((id) => !priorCrmManagedIds.has(id));
+
+    await prisma.$transaction(async (tx) => {
+      const staleIds = Array.from(priorCrmManagedIds).filter((id) => !desiredAgentIds.includes(id));
+      if (staleIds.length > 0) {
+        await tx.conversationAssignee.deleteMany({
+          where: { conversationId: conversation!.id, crmManaged: true, agentId: { in: staleIds } },
+        });
+      }
+
+      for (const agentId of desiredAgentIds) {
+        await tx.conversationAssignee.upsert({
+          where: { conversationId_agentId: { conversationId: conversation!.id, agentId } },
+          create: { conversationId: conversation!.id, agentId, crmManaged: true },
+          update: { crmManaged: true },
+        });
+      }
+    });
+
+    if (desiredAgentIds.length > 0 || priorCrmManagedIds.size > 0) {
+      const updatedConversation = await prisma.conversation.findUnique({
+        where: { id: conversation.id },
+        include: {
+          contact: true,
+          assignees: { include: { agent: true } },
+          whatsappNumber: { select: { restrictToOwnLeads: true } },
+        },
+      });
+
+      if (updatedConversation) {
+        const eligibleAgentIds = await getEligibleAgentIdsForConversation({
+          whatsappNumberId: whatsappNumber.id,
+          whatsappNumber: updatedConversation.whatsappNumber,
+          assignees: updatedConversation.assignees,
+        });
+        broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: updatedConversation });
+
+        for (const agentId of newlyAddedIds) {
+          sendToAgent(agentId, "conversation-assigned", { conversation: updatedConversation, assignedBy: "CRM" });
         }
       }
     }
 
     return NextResponse.json(
-      { conversationId: conversation.id, contactId: contact.id, agentId: assignedAgentId },
+      { conversationId: conversation.id, contactId: contact.id, agentId: ownerAgentId, ownerAgentId, telecallerAgentId },
       { status: 200 }
     );
   } catch (error) {
