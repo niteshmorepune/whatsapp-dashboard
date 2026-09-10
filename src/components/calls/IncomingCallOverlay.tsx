@@ -57,10 +57,25 @@ function playRingTone(): () => void {
 
     ping();
     const interval = setInterval(ping, 1500);
+    let closed = false;
     return () => {
+      // Real bug hit on the first live test call, 2026-09-10: this stop
+      // function gets called more than once (once when Answer is clicked,
+      // again later from teardown() when Meta's own terminate webhook
+      // arrives) -- ctx.close() throws InvalidStateError on the second
+      // call, and since that throw happened inside teardown() with nothing
+      // after it wrapped in try/catch, teardown() aborted immediately and
+      // never reached setPhase("idle") -- the UI stayed stuck on
+      // "Connecting…" forever even after Meta itself gave up on the call.
+      if (closed || stopped) return;
       stopped = true;
+      closed = true;
       clearInterval(interval);
-      ctx.close();
+      try {
+        ctx.close();
+      } catch {
+        // Already closed/closing -- nothing left to clean up.
+      }
     };
   } catch {
     return () => {};
@@ -90,11 +105,19 @@ export function IncomingCallOverlay() {
   const activeCallIdRef = useRef<string | null>(null);
 
   const teardown = useCallback(() => {
+    try {
+      pcRef.current?.getSenders().forEach((sender) => sender.track?.stop());
+      pcRef.current?.close();
+    } catch (error) {
+      // Never let a WebRTC cleanup error stop the rest of teardown from
+      // running -- the real 2026-09-10 bug (a double AudioContext.close()
+      // throwing) left the UI permanently stuck on "Connecting…" because
+      // nothing after the throw ever executed, including setPhase("idle").
+      console.error("IncomingCallOverlay teardown: RTCPeerConnection cleanup failed", error);
+    }
     stopRingRef.current();
     if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
     if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
-    pcRef.current?.getSenders().forEach((sender) => sender.track?.stop());
-    pcRef.current?.close();
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -152,8 +175,10 @@ export function IncomingCallOverlay() {
     if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
 
     try {
+      console.log("[call] requesting microphone…");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
+      console.log("[call] microphone granted, creating RTCPeerConnection…");
 
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       pcRef.current = pc;
@@ -163,31 +188,48 @@ export function IncomingCallOverlay() {
       };
 
       await pc.setRemoteDescription({ type: "offer", sdp: call.offerSdp });
+      console.log("[call] remote offer set, creating answer…");
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      console.log("[call] local answer set, gathering ICE candidates…");
 
       // Vanilla (non-trickle) ICE — Meta's HTTP-based signaling takes one
       // final SDP, not incremental candidates, so wait for gathering to
-      // actually finish before sending our answer.
+      // finish before sending our answer. Bounded with a timeout (real
+      // incident, 2026-09-10: gathering never reached "complete" on the
+      // first live test call, and with no timeout this awaited forever —
+      // no network request ever left the browser, no error was ever
+      // thrown, the UI just sat on "Connecting…" indefinitely). Proceeding
+      // with whatever candidates gathered so far is the standard WebRTC
+      // fallback here — a partial candidate set is still often usable.
+      const ICE_GATHERING_TIMEOUT_MS = 5_000;
       await new Promise<void>((resolve) => {
         if (pc.iceGatheringState === "complete") {
           resolve();
           return;
         }
+        const timeout = setTimeout(() => {
+          pc.removeEventListener("icegatheringstatechange", check);
+          console.warn(`[call] ICE gathering did not complete within ${ICE_GATHERING_TIMEOUT_MS}ms (state=${pc.iceGatheringState}) — proceeding with partial candidates`);
+          resolve();
+        }, ICE_GATHERING_TIMEOUT_MS);
         const check = () => {
           if (pc.iceGatheringState === "complete") {
+            clearTimeout(timeout);
             pc.removeEventListener("icegatheringstatechange", check);
             resolve();
           }
         };
         pc.addEventListener("icegatheringstatechange", check);
       });
+      console.log(`[call] ICE gathering settled (state=${pc.iceGatheringState}), sending answer to server…`);
 
       const response = await fetch(`/api/calls/${call.callId}/answer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sdpAnswer: pc.localDescription?.sdp }),
       });
+      console.log(`[call] /answer responded ${response.status}`);
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || "Failed to answer call");
@@ -196,6 +238,7 @@ export function IncomingCallOverlay() {
       setPhase("active");
       durationIntervalRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
     } catch (error) {
+      console.error("[call] answer flow failed:", error);
       toast.error(error instanceof Error ? error.message : "Failed to answer call");
       teardown();
     }
