@@ -175,6 +175,32 @@ export async function markMessageRead(
   });
 }
 
+export interface CallActionBody {
+  action: "pre_accept" | "accept" | "reject" | "terminate";
+  call_id: string;
+  session?: { sdp_type: "answer"; sdp: string };
+}
+
+/**
+ * Answers/rejects/terminates a WhatsApp Calling API call. Same
+ * `/{phoneNumberId}/calls` endpoint for all four actions — `session` is
+ * only meaningful for `accept`/`pre_accept` (the business's own SDP
+ * answer); `reject`/`terminate` take no session at all. See
+ * api/webhook/route.ts's `handleCallEvent()` for the inbound `connect`
+ * webhook this responds to, and api/calls/[callId]/{answer,reject,hangup}
+ * for the three callers.
+ */
+export async function postCallAction(
+  config: MetaNumberConfig,
+  body: CallActionBody
+): Promise<{ success: boolean }> {
+  const response = await clientFor(config).post(`/${config.phoneNumberId}/calls`, {
+    messaging_product: "whatsapp",
+    ...body,
+  });
+  return response.data;
+}
+
 /**
  * Media (upload/download) is proxied through whichever number's token is
  * passed in — Meta scopes media access by the app/token, not by a specific

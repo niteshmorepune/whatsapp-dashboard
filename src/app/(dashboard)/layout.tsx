@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/ui/Sidebar";
 import { Header } from "@/components/ui/Header";
 import { Toaster } from "sonner";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { IncomingCallOverlay } from "@/components/calls/IncomingCallOverlay";
 
 export default function DashboardLayout({
   children,
@@ -71,6 +72,8 @@ export default function DashboardLayout({
           },
         }}
       />
+
+      <IncomingCallOverlay />
     </div>
   );
 }

@@ -27,11 +27,34 @@ export interface SSEConversationAssignedData {
   assignedBy: string;
 }
 
+// WhatsApp Calling API (inbound only) — see api/webhook/route.ts's
+// handleCallEvent() and api/calls/[callId]/{answer,reject,hangup}.
+export interface SSEIncomingCallData {
+  callId: string;
+  conversationId: string;
+  contact: { id: string; name: string | null; phone: string };
+  offerSdp: string;
+}
+
+export interface SSECallAnsweredData {
+  callId: string;
+  conversationId: string;
+}
+
+export interface SSECallEndedData {
+  callId: string;
+  conversationId: string;
+  status: "MISSED" | "REJECTED" | "FAILED" | "COMPLETED";
+}
+
 export interface SSEHandlers {
   "new-message"?: (data: SSENewMessageData) => void;
   "message-status"?: (data: SSEMessageStatusData) => void;
   "conversation-updated"?: (data: SSEConversationUpdatedData) => void;
   "conversation-assigned"?: (data: SSEConversationAssignedData) => void;
+  "incoming-call"?: (data: SSEIncomingCallData) => void;
+  "call-answered"?: (data: SSECallAnsweredData) => void;
+  "call-ended"?: (data: SSECallEndedData) => void;
 }
 
 // All named events the server ever emits (excluding the keep-alive comment)
@@ -40,6 +63,9 @@ const SSE_EVENTS = [
   "message-status",
   "conversation-updated",
   "conversation-assigned",
+  "incoming-call",
+  "call-answered",
+  "call-ended",
 ] as const;
 
 // ─── Hook ────────────────────────────────────────────────────────────────────

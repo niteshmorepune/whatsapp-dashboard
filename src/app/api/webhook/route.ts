@@ -7,7 +7,7 @@ import { maybeReplyWithAi } from "@/lib/ai-assistant";
 import { notifyCrm, notifyCrmMessageFailed } from "@/lib/crm-notify";
 import { extractStatusError } from "@/lib/meta";
 import { isOptOutMessage } from "@/lib/opt-out";
-import type { WhatsappNumber } from "@prisma/client";
+import type { WhatsappNumber, CallStatus } from "@prisma/client";
 
 // GET: Meta webhook verification
 export async function GET(request: NextRequest) {
@@ -62,6 +62,25 @@ export async function POST(request: NextRequest) {
         if (value.statuses?.length) {
           for (const status of value.statuses) {
             await handleStatusUpdate(status);
+          }
+        }
+
+        // Handle WhatsApp Calling API events (inbound only, 2026-09-10)
+        if (value.calls?.length) {
+          const phoneNumberId: string | undefined = value.metadata?.phone_number_id;
+          const whatsappNumber = phoneNumberId
+            ? await getNumberByPhoneNumberId(phoneNumberId)
+            : null;
+
+          if (!whatsappNumber) {
+            console.error(
+              `Webhook: no WhatsappNumber row matches metadata.phone_number_id="${phoneNumberId}" — call event dropped.`
+            );
+            continue;
+          }
+
+          for (const call of value.calls) {
+            await handleCallEvent(call, value.contacts?.[0], whatsappNumber);
           }
         }
       }
@@ -161,41 +180,7 @@ async function handleInboundMessage(
     contact.optedOut = true;
   }
 
-  // Find or create conversation — scoped per line, so a contact who has
-  // messaged both numbers (e.g. a lead on the marketing line who later
-  // texts the support line directly) gets one conversation per number,
-  // never one merged thread.
-  let conversation = await prisma.conversation.findFirst({
-    where: {
-      contactId: contact.id,
-      whatsappNumberId: whatsappNumber.id,
-      status: { in: ["OPEN", "PENDING"] },
-    },
-    orderBy: { lastMessageAt: "desc" },
-  });
-
-  const windowExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-  if (!conversation) {
-    conversation = await prisma.conversation.create({
-      data: {
-        contactId: contact.id,
-        whatsappNumberId: whatsappNumber.id,
-        status: "OPEN",
-        lastMessageAt: new Date(),
-        windowExpiresAt,
-      },
-    });
-  } else {
-    conversation = await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: {
-        lastMessageAt: new Date(),
-        windowExpiresAt,
-        status: conversation.status === "RESOLVED" ? "OPEN" : conversation.status,
-      },
-    });
-  }
+  const conversation = await findOrCreateConversation(contact.id, whatsappNumber.id);
 
   // Skip non-meaningful message types (reactions, unsupported, system events)
   if (msg.type === "unsupported" || msg.type === "reaction" || msg.type === "system") {
@@ -284,6 +269,47 @@ async function handleInboundMessage(
   );
 }
 
+/**
+ * Find-or-create, scoped per line (a contact who has messaged both numbers
+ * gets one conversation per number, never a merged thread). Shared by
+ * handleInboundMessage and handleCallEvent — extracted 2026-09-10 once a
+ * second real call site existed, to keep the windowExpiresAt/RESOLVED-
+ * reopening logic from drifting between the two.
+ */
+async function findOrCreateConversation(contactId: string, whatsappNumberId: string) {
+  const existing = await prisma.conversation.findFirst({
+    where: {
+      contactId,
+      whatsappNumberId,
+      status: { in: ["OPEN", "PENDING"] },
+    },
+    orderBy: { lastMessageAt: "desc" },
+  });
+
+  const windowExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  if (!existing) {
+    return prisma.conversation.create({
+      data: {
+        contactId,
+        whatsappNumberId,
+        status: "OPEN",
+        lastMessageAt: new Date(),
+        windowExpiresAt,
+      },
+    });
+  }
+
+  return prisma.conversation.update({
+    where: { id: existing.id },
+    data: {
+      lastMessageAt: new Date(),
+      windowExpiresAt,
+      status: existing.status === "RESOLVED" ? "OPEN" : existing.status,
+    },
+  });
+}
+
 async function handleStatusUpdate(status: {
   id: string;
   status: string;
@@ -333,4 +359,128 @@ async function handleStatusUpdate(status: {
   }
 
   return updated;
+}
+
+/**
+ * WhatsApp Calling API — inbound only. `event: "connect"` is the incoming
+ * ring (carries the caller's SDP offer); `event: "terminate"` is the end of
+ * a call, answered or not. See src/lib/meta.ts's postCallAction() for the
+ * business's own accept/reject/terminate calls this pairs with
+ * (api/calls/[callId]/{answer,reject,hangup}/route.ts).
+ */
+async function handleCallEvent(
+  call: {
+    id: string;
+    event: string;
+    from?: string;
+    timestamp?: string;
+    session?: { sdp_type: string; sdp: string };
+    status?: string;
+    duration?: number;
+  },
+  contactInfo: { profile?: { name?: string } } | undefined,
+  whatsappNumber: WhatsappNumber
+) {
+  if (call.event === "connect") {
+    if (!call.from || !call.session?.sdp) {
+      console.error(`Webhook: calls "connect" event missing from/session.sdp — call ${call.id} dropped`, call);
+      return;
+    }
+
+    // Dedupe, same convention as handleInboundMessage's metaMessageId check.
+    const existing = await prisma.call.findUnique({ where: { metaCallId: call.id } });
+    if (existing) return;
+
+    const contact = await prisma.contact.upsert({
+      where: { phone: call.from },
+      create: { phone: call.from, name: contactInfo?.profile?.name ?? null },
+      update: {
+        name: contactInfo?.profile?.name ? contactInfo.profile.name : undefined,
+      },
+    });
+
+    const conversation = await findOrCreateConversation(contact.id, whatsappNumber.id);
+
+    const created = await prisma.call.create({
+      data: {
+        metaCallId: call.id,
+        conversationId: conversation.id,
+        status: "RINGING",
+        offerSdp: call.session.sdp,
+        startedAt: call.timestamp ? new Date(Number(call.timestamp) * 1000) : new Date(),
+      },
+    });
+
+    const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
+    broadcastToAgents(eligibleAgentIds, "incoming-call", {
+      callId: created.id,
+      conversationId: conversation.id,
+      contact: { id: contact.id, name: contact.name, phone: contact.phone },
+      offerSdp: call.session.sdp,
+    });
+
+    const connectedIds = new Set(getConnectedAgentIds());
+    const offlineAgentIds = eligibleAgentIds.filter((id) => !connectedIds.has(id));
+    if (offlineAgentIds.length > 0) {
+      await sendPushToAgents(offlineAgentIds, {
+        title: `Incoming call from ${contact.name || `+${contact.phone}`}`,
+        body: "Tap to answer in wadesk",
+        conversationId: conversation.id,
+        url: "/inbox",
+      });
+    }
+    return;
+  }
+
+  if (call.event === "terminate") {
+    const existingCall = await prisma.call.findUnique({ where: { metaCallId: call.id } });
+    if (!existingCall) return; // unrecognized id -- harmless no-op, same convention used elsewhere in this app
+
+    // Already resolved by our own answer/reject/hangup route (whichever
+    // raced first) -- Meta's terminate webhook arriving after that is a
+    // harmless no-op, not a second source of truth to overwrite a correct
+    // COMPLETED/REJECTED status with a guessed one.
+    if (existingCall.status !== "RINGING" && existingCall.status !== "ANSWERED") {
+      return;
+    }
+
+    // Meta's exact terminate `status` string set isn't fully pinned down
+    // from docs alone -- logged so the first real calls can confirm/correct
+    // this mapping (see the calling-feature plan's own "Risks" section).
+    console.log(
+      `Webhook: call ${call.id} terminate event, raw status=${JSON.stringify(call.status)}, duration=${call.duration}`
+    );
+
+    const wasAnswered = existingCall.status === "ANSWERED";
+    const rawStatus = String(call.status ?? "").toLowerCase();
+    const status: CallStatus = rawStatus.includes("fail") ? "FAILED" : wasAnswered ? "COMPLETED" : "MISSED";
+    const endedAt = new Date();
+    const durationSeconds =
+      typeof call.duration === "number"
+        ? call.duration
+        : existingCall.answeredAt
+          ? Math.round((endedAt.getTime() - existingCall.answeredAt.getTime()) / 1000)
+          : null;
+
+    await prisma.call.update({
+      where: { id: existingCall.id },
+      data: { status, endedAt, durationSeconds },
+    });
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: existingCall.conversationId },
+      select: { whatsappNumberId: true },
+    });
+    if (!conversation) return;
+
+    const eligibleAgentIds = await getAgentIdsWithNumberAccess(conversation.whatsappNumberId);
+    broadcastToAgents(eligibleAgentIds, "call-ended", {
+      callId: existingCall.id,
+      conversationId: existingCall.conversationId,
+      status,
+    });
+    return;
+  }
+
+  console.log(`Webhook: unhandled call event "${call.event}" for call ${call.id} — ignored`);
 }

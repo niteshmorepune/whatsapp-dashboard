@@ -53,6 +53,20 @@ enum AiMode {
   FORCE_OFF
 }
 
+// Inbound WhatsApp Calling API only, for now (2026-09-10) — a business-
+// initiated (outbound) call is a materially different flow (a permission-
+// request handshake, per-number daily/weekly volume caps, per-minute
+// billing) that hasn't been built yet, so there's no `direction` column
+// until that's actually needed.
+enum CallStatus {
+  RINGING
+  ANSWERED
+  MISSED
+  REJECTED
+  FAILED
+  COMPLETED
+}
+
 model Agent {
   id                String                @id @default(cuid())
   name              String
@@ -68,6 +82,7 @@ model Agent {
   broadcasts        Broadcast[]
   pushSubscriptions PushSubscription[]
   whatsappNumberGrants AgentWhatsappNumber[]
+  answeredCalls     Call[]
 }
 
 // A single Meta WABA can host several phone numbers (e.g. one for
@@ -223,6 +238,7 @@ model Conversation {
   whatsappNumber   WhatsappNumber     @relation(fields: [whatsappNumberId], references: [id])
   messages         Message[]
   assignees        ConversationAssignee[]
+  calls            Call[]
 
   @@index([contactId])
   @@index([whatsappNumberId])
@@ -292,6 +308,30 @@ model Message {
 
   @@index([conversationId])
   @@index([sentByAgentId])
+}
+
+// WhatsApp Calling API — inbound only (see CallStatus). One row per real
+// Meta call_id, mirroring Message's own metaMessageId @unique dedup
+// pattern. offerSdp is kept even after the call ends (small, and useful
+// for debugging a failed answer attempt) rather than cleared.
+model Call {
+  id                String       @id @default(cuid())
+  metaCallId        String       @unique
+  conversationId    String
+  status            CallStatus   @default(RINGING)
+  offerSdp          String       @db.Text
+  answeredByAgentId String?
+  startedAt         DateTime     @default(now())
+  answeredAt        DateTime?
+  endedAt           DateTime?
+  durationSeconds   Int?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  answeredByAgent   Agent?       @relation(fields: [answeredByAgentId], references: [id])
+
+  @@index([conversationId])
+  @@index([status])
 }
 
 model Template {
