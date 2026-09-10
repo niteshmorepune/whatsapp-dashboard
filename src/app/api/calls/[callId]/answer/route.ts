@@ -60,11 +60,30 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
       return NextResponse.json({ error: `Failed to answer call: ${detail}` }, { status: 502 });
     }
 
-    const eligibleAgentIds = await getAgentIdsWithNumberAccess(call.conversation.whatsappNumberId);
-    broadcastToAgents(eligibleAgentIds, "call-answered", {
-      callId: call.id,
-      conversationId: call.conversationId,
-    });
+    // Real incident, 2026-09-10: this used to broadcast to every eligible
+    // agent, including whoever just answered. That agent's own browser
+    // treats any call-answered for its active call as "someone else took
+    // it" and tears down the connection immediately -- so the moment a
+    // call was successfully answered, the answering browser received its
+    // own confirmation and instantly killed the just-established
+    // RTCPeerConnection, before audio could ever flow. Meta was never told
+    // to terminate (teardown() is local-only), so the caller's phone
+    // stayed "connected" until Meta's own timeout gave up on the dead
+    // media ~20s later and reported the call FAILED. Excluding the
+    // answering agent here is the actual fix -- known tradeoff: a SECOND
+    // open tab for that same agent (sse.ts supports multi-tab per agent)
+    // won't be told the call was answered elsewhere and will keep ringing
+    // until its own 60s ring timeout, since agentIds are the broadcast
+    // unit, not individual connections.
+    const eligibleAgentIds = (await getAgentIdsWithNumberAccess(call.conversation.whatsappNumberId)).filter(
+      (id) => id !== session.user.id
+    );
+    if (eligibleAgentIds.length > 0) {
+      broadcastToAgents(eligibleAgentIds, "call-answered", {
+        callId: call.id,
+        conversationId: call.conversationId,
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
