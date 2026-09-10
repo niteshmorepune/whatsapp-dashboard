@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
 import { postCallAction, extractMetaErrorMessage } from "@/lib/meta";
 import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { recordCallSummaryMessage } from "@/lib/call-summary";
 
 /**
  * Ends an active call. Any agent granted this line can hang up, not just
@@ -59,6 +60,13 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
       conversationId: call.conversationId,
       status: "COMPLETED",
     });
+    await recordCallSummaryMessage(
+      call.conversationId,
+      call.conversation.whatsappNumberId,
+      call.metaCallId,
+      "COMPLETED",
+      durationSeconds
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

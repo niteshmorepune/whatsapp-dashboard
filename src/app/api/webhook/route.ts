@@ -7,6 +7,7 @@ import { maybeReplyWithAi } from "@/lib/ai-assistant";
 import { notifyCrm, notifyCrmMessageFailed } from "@/lib/crm-notify";
 import { extractStatusError } from "@/lib/meta";
 import { isOptOutMessage } from "@/lib/opt-out";
+import { recordCallSummaryMessage } from "@/lib/call-summary";
 import type { WhatsappNumber, CallStatus } from "@prisma/client";
 
 // GET: Meta webhook verification
@@ -401,6 +402,8 @@ async function handleCallEvent(
 
     const conversation = await findOrCreateConversation(contact.id, whatsappNumber.id);
 
+    console.log(`Webhook: call ${call.id} connect event, from=${call.from}, timestamp=${call.timestamp}`);
+
     const created = await prisma.call.create({
       data: {
         metaCallId: call.id,
@@ -479,6 +482,13 @@ async function handleCallEvent(
       conversationId: existingCall.conversationId,
       status,
     });
+    await recordCallSummaryMessage(
+      existingCall.conversationId,
+      conversation.whatsappNumberId,
+      existingCall.metaCallId,
+      status,
+      durationSeconds
+    );
     return;
   }
 

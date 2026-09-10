@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
 import { postCallAction, extractMetaErrorMessage } from "@/lib/meta";
 import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { recordCallSummaryMessage } from "@/lib/call-summary";
 
 /** Agent declines a ringing call. Same atomic-claim shape as answer/route.ts. */
 export async function POST(request: NextRequest, { params }: { params: { callId: string } }) {
@@ -51,6 +52,13 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
       conversationId: call.conversationId,
       status: "REJECTED",
     });
+    await recordCallSummaryMessage(
+      call.conversationId,
+      call.conversation.whatsappNumberId,
+      call.metaCallId,
+      "REJECTED",
+      null
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {
