@@ -174,9 +174,11 @@ export function IncomingCallOverlay() {
     },
     "call-answered": (data) => {
       // Another agent (or another of this agent's own tabs) took it first.
+      console.log(`[call] SSE call-answered received for ${data.callId} (active=${activeCallIdRef.current})`);
       if (activeCallIdRef.current === data.callId) teardown();
     },
     "call-ended": (data) => {
+      console.log(`[call] SSE call-ended received for ${data.callId}, status=${data.status} (active=${activeCallIdRef.current})`);
       if (activeCallIdRef.current === data.callId) teardown();
     },
   });
@@ -200,8 +202,23 @@ export function IncomingCallOverlay() {
       pcRef.current = pc;
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
       pc.ontrack = (event) => {
+        console.log(`[call] ontrack fired — remote stream has ${event.streams[0]?.getAudioTracks().length ?? 0} audio track(s)`);
         if (remoteAudioRef.current) remoteAudioRef.current.srcObject = event.streams[0];
       };
+      // Diagnostic only -- vanilla (non-trickle) ICE still sends one final
+      // SDP, these candidates are never signaled individually. Purely to
+      // see, on the next real test, whether a "relay" (TURN) candidate is
+      // actually being gathered at all, since audio still didn't connect
+      // even after wiring in Cloudflare TURN credentials.
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log(`[call] local ICE candidate: type=${event.candidate.type} protocol=${event.candidate.protocol} address=${event.candidate.address}`);
+        } else {
+          console.log("[call] ICE candidate gathering finished (null candidate)");
+        }
+      };
+      pc.oniceconnectionstatechange = () => console.log(`[call] iceConnectionState=${pc.iceConnectionState}`);
+      pc.onconnectionstatechange = () => console.log(`[call] connectionState=${pc.connectionState}`);
 
       await pc.setRemoteDescription({ type: "offer", sdp: call.offerSdp });
       console.log("[call] remote offer set, creating answer…");
