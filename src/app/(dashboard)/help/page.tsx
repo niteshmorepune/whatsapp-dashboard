@@ -15,6 +15,7 @@ import {
   Bell,
   CheckCircle2,
   Phone,
+  PhoneCall,
   Bot,
 } from "lucide-react";
 
@@ -342,6 +343,52 @@ const SECTIONS: Section[] = [
           Adding a number here is only half the setup — that number&apos;s WABA also needs to be
           subscribed to this app in Meta (a one-time API call your developer runs), or messages on
           it will never arrive here even though the number is configured correctly.
+        </Note>
+      </div>
+    ),
+  },
+  {
+    id: "voice-calls",
+    icon: <PhoneCall className="w-4 h-4" />,
+    title: "Voice Calls — Answering WhatsApp calls (added 2026-09-10)",
+    color: "text-lime-400",
+    content: (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-400">
+          A lead or customer can tap the call button in their own WhatsApp app to place a real voice
+          call to a NEDS number — this shows up as a ringing popup right here in the dashboard, on
+          whichever page you happen to be on.
+        </p>
+        <Note>
+          <strong className="text-yellow-200">Inbound only.</strong> You can answer a call someone
+          places to a NEDS number, but you cannot place an outbound WhatsApp call from wadesk yet.
+        </Note>
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white">When a call comes in:</p>
+          <Step n={1} text="A popup appears with the caller's name/number and a ringing sound, no matter which page you're on — you don't need the Inbox open." />
+          <Step n={2} text="Click the green phone icon to Answer, or the red icon to Decline. Answering asks your browser for microphone permission the first time — click Allow." />
+          <Step n={3} text="Once connected you'll see a live call timer with Mute and Hang Up buttons. Click Hang Up when you're done." />
+        </div>
+        <Note>
+          Every agent granted that line sees the same ringing popup at the same time — whoever clicks
+          Answer first gets the call; it disappears from everyone else&apos;s screen automatically.
+        </Note>
+        <Note>
+          Once a call ends — answered, missed, declined, or failed to connect — it&apos;s automatically
+          logged as a message in that contact&apos;s chat thread (e.g. &quot;📞 Call answered — 1:47&quot;), so
+          there&apos;s a record even if you weren&apos;t the one who took it.
+        </Note>
+        <Tip>
+          For NEDS CRM users: an answered call syncs automatically into the CRM&apos;s own Call Log,
+          the same as if you&apos;d logged it there by hand — as long as your wadesk login email matches
+          your CRM account email. A missed or declined call does not sync (there&apos;s no one clear
+          person to credit it to), but still shows here in the chat thread.
+        </Tip>
+        <Note>
+          Hearing nothing, or the caller can&apos;t hear you? Check that your browser actually has
+          microphone permission for this site (address bar → site settings), and that you&apos;re not on
+          a network that blocks the call outright (a hotel/corporate Wi-Fi, for example). Contact your
+          admin if it keeps happening.
         </Note>
       </div>
     ),
