@@ -7,7 +7,7 @@ import { maybeReplyWithAi } from "@/lib/ai-assistant";
 import { notifyCrm, notifyCrmMessageFailed } from "@/lib/crm-notify";
 import { extractStatusError } from "@/lib/meta";
 import { isOptOutMessage } from "@/lib/opt-out";
-import { recordCallSummaryMessage } from "@/lib/call-summary";
+import { recordCallSummaryMessage, syncCompletedCallToCrm } from "@/lib/call-summary";
 import type { WhatsappNumber, CallStatus } from "@prisma/client";
 
 // GET: Meta webhook verification
@@ -489,6 +489,7 @@ async function handleCallEvent(
       status,
       durationSeconds
     );
+    await syncCompletedCallToCrm(existingCall.id);
     return;
   }
 

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
 import { getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { notifyCrmCallLog } from "@/lib/crm-notify";
 import type { CallStatus } from "@prisma/client";
 
 function formatDuration(seconds: number | null): string {
@@ -72,4 +73,32 @@ export async function recordCallSummaryMessage(
   const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumberId);
   broadcastToAgents(eligibleAgentIds, "new-message", { conversationId, message, conversation: fullConversation });
   broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: fullConversation });
+}
+
+/**
+ * Syncs an ANSWERED call into the NEDS CRM's own CallLog (owner-requested,
+ * 2026-09-10) so it counts toward employee performance reports the same
+ * way a manually-logged phone call does. Deliberately answered-only — the
+ * CRM's CallLog.user_id is required, and only a call someone actually
+ * answered has an unambiguous person to attribute it to; a missed/
+ * declined/failed call has no clear "who" and stays visible only in
+ * wadesk's own thread/Call table (see recordCallSummaryMessage() above).
+ * A no-op for anything else — call sites can invoke this unconditionally
+ * alongside recordCallSummaryMessage() without checking status themselves.
+ */
+export async function syncCompletedCallToCrm(callId: string): Promise<void> {
+  const call = await prisma.call.findUnique({
+    where: { id: callId },
+    include: { conversation: { include: { contact: true } }, answeredByAgent: true },
+  });
+
+  if (!call || call.status !== "COMPLETED" || !call.answeredByAgent) return;
+
+  notifyCrmCallLog({
+    phone: call.conversation.contact.phone,
+    agentEmail: call.answeredByAgent.email,
+    wadeskCallId: call.metaCallId,
+    startedAt: call.startedAt,
+    durationSeconds: call.durationSeconds ?? 0,
+  });
 }

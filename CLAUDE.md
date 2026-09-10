@@ -51,6 +51,7 @@ CRM_WEBHOOK_TOKEN=
 CRM_LEAD_CONTEXT_URL=
 CRM_MESSAGE_FAILED_URL=
 CRM_GOAL_CAPTURE_URL=
+CRM_CALL_LOG_URL=
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=
@@ -421,6 +422,66 @@ no CRM-origin tracking of its own. `CRM_MESSAGE_FAILED_URL` (new env var,
 reuses `CRM_WEBHOOK_TOKEN`, same pattern as `CRM_LEAD_CONTEXT_URL`) must be
 set for this to actually fire — same "ships inert until configured" contract
 as every other optional integration in this app.
+
+### WhatsApp Calling API (inbound only, added 2026-09-10)
+Real voice calls over WhatsApp (Meta Cloud API Calling), not text messaging.
+Deliberately **inbound only** — a lead/customer taps the call button on
+their side; outbound (business-initiated) calling needs a separate
+permission-request handshake and per-number volume caps Meta imposes, not
+built here.
+
+- **`Call` model** (`RINGING`/`ANSWERED`/`MISSED`/`REJECTED`/`FAILED`/
+  `COMPLETED`) — one row per real Meta `call_id`, `metaCallId @unique`
+  mirrors `Message.metaMessageId`'s own dedup pattern.
+- **`api/webhook/route.ts`** gained a third branch (`value.calls[]`,
+  alongside the existing `messages`/`statuses`) — `handleCallEvent()`.
+  `event: "connect"` is the incoming ring (carries the caller's SDP
+  offer): upserts Contact/Conversation (via the same
+  `findOrCreateConversation()` `handleInboundMessage` uses) and broadcasts
+  `"incoming-call"` to every agent granted that line. `event: "terminate"`
+  resolves the final status — guarded against overwriting a status the
+  agent-facing routes below already set (either side can resolve a call
+  first).
+- **Three session-authed routes**, `api/calls/[callId]/{answer,reject,
+  hangup}` — each claims the `Call` row atomically (`updateMany` with a
+  status guard) before calling Meta's own accept/reject/terminate action
+  (`postCallAction()` in `meta.ts`), so two agents clicking Answer at once
+  can't both send an accept to Meta. **Real gotcha, found via a live
+  test call**: `answer/route.ts`'s `"call-answered"` broadcast (meant to
+  tell OTHER agents the ringing call is taken) must exclude the answering
+  agent's own id — including them meant their own browser received its
+  own confirmation and immediately tore down the call it had just
+  connected, thinking someone else had answered elsewhere. See
+  [[feedback-gotchas]] (CRM-side memory) for the general "exclude the
+  actor from their own broadcast" rule this is an instance of.
+- **`IncomingCallOverlay`** (`src/components/calls/`), mounted once in the
+  dashboard layout so a call rings regardless of which page an agent is
+  on. Real `getUserMedia`/`RTCPeerConnection`/vanilla-ICE-then-answer flow
+  in the browser — not a proxied stream. ICE servers come from
+  `GET /api/calls/turn-credentials` (session-authed), which generates
+  short-lived Cloudflare Realtime TURN credentials server-side
+  (`CLOUDFLARE_TURN_KEY_ID`/`_API_TOKEN`, 1h TTL) — a plain STUN-only
+  config let signaling connect but never carried real audio on this
+  network; TURN was the actual fix, needed alongside the call-answered
+  broadcast fix above.
+- **`recordCallSummaryMessage()`** (`src/lib/call-summary.ts`) makes a
+  resolved call visible in the ordinary chat thread ("📞 Call answered —
+  0:29" / "📞 Missed call" / "📞 Call declined" / "📞 Call failed to
+  connect"), reusing the existing Message/MessageBubble rendering.
+  Deliberately called from BOTH the webhook's terminate handler AND the
+  agent-initiated hangup/reject routes — a live test found a call whose
+  terminate webhook never arrived from Meta at all, so relying solely on
+  the webhook path would have left that call permanently invisible in the
+  thread too.
+- **`syncCompletedCallToCrm()`** (same file) syncs an ANSWERED call into
+  the NEDS CRM's own `CallLog` (`CRM_CALL_LOG_URL`, reuses
+  `CRM_WEBHOOK_TOKEN`) so it counts toward employee performance reports
+  like a manually-logged phone call. Deliberately answered-only — the
+  CRM's `CallLog.user_id` is required (not nullable), and only a call
+  someone actually answered has an unambiguous person (`answeredByAgent
+  .email`, matched against the CRM's own `User.email` server-side) to
+  attribute it to; missed/declined/failed calls stay visible only in
+  wadesk's own thread/`Call` table.
 
 ### Meta API
 All Meta Cloud API calls go through `src/lib/meta.ts`. Every function takes a `MetaNumberConfig` (`{ phoneNumberId, accessToken }`) as its **first** argument — there is no global/env-level Meta client anymore; the caller resolves which number's config to use (typically via `toMetaConfig(conversation.whatsappNumber)`). Meta API version is pinned to `v18.0`.

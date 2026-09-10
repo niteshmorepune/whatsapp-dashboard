@@ -109,3 +109,50 @@ export function notifyCrmMessageFailed(params: NotifyCrmMessageFailedParams): vo
     }),
   }).catch(() => {});
 }
+
+interface NotifyCrmCallLogParams {
+  phone: string;
+  agentEmail: string;
+  wadeskCallId: string;
+  startedAt: Date;
+  durationSeconds: number;
+}
+
+/**
+ * Syncs an ANSWERED WhatsApp voice call into the CRM's own CallLog so it
+ * counts toward employee performance reports the same way a manually
+ * logged phone call does — owner-requested, 2026-09-10, once inbound
+ * calling was confirmed working. Deliberately answered-calls-only (see
+ * src/lib/call-summary.ts's syncCompletedCallToCrm(), the only caller) —
+ * the CRM's CallLog.user_id is required, and only a call someone actually
+ * answered has an unambiguous person to attribute it to.
+ *
+ * `agentEmail` is matched against the CRM's own User.email server-side —
+ * an agent whose wadesk.in login doesn't share an email with a real CRM
+ * user (e.g. a test/admin account) silently doesn't get logged, same
+ * "never guess an attribution" contract as every other wadesk↔CRM bridge.
+ * `wadeskCallId` (this app's own Call.metaCallId) is the CRM-side dedup
+ * key, same "pass back an id the CRM stores for idempotency" pattern as
+ * notifyCrm()'s messageId.
+ *
+ * Fire-and-forget, same contract as every other function in this file:
+ * never awaited, never throws, ships inert until CRM_CALL_LOG_URL is set.
+ */
+export function notifyCrmCallLog(params: NotifyCrmCallLogParams): void {
+  if (!process.env.CRM_CALL_LOG_URL || !process.env.CRM_WEBHOOK_TOKEN) return;
+
+  fetch(process.env.CRM_CALL_LOG_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.CRM_WEBHOOK_TOKEN}`,
+    },
+    body: JSON.stringify({
+      phone: params.phone,
+      agent_email: params.agentEmail,
+      wadesk_call_id: params.wadeskCallId,
+      started_at: params.startedAt.toISOString(),
+      duration_seconds: params.durationSeconds,
+    }),
+  }).catch(() => {});
+}

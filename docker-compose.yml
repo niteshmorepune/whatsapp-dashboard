@@ -39,6 +39,9 @@ services:
       # Compose never passes it through" gotcha as every var above.
       - CLOUDFLARE_TURN_KEY_ID=${CLOUDFLARE_TURN_KEY_ID}
       - CLOUDFLARE_TURN_KEY_API_TOKEN=${CLOUDFLARE_TURN_KEY_API_TOKEN}
+      # Syncs an answered WhatsApp call into the CRM's own CallLog — see
+      # src/lib/call-summary.ts's syncCompletedCallToCrm().
+      - CRM_CALL_LOG_URL=${CRM_CALL_LOG_URL}
     depends_on:
       db:
         condition: service_healthy
