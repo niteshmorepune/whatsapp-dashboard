@@ -11,11 +11,25 @@ type CallPhase = "idle" | "ringing" | "connecting" | "active";
 // the terminate webhook is ever slow/lost, not the primary end-of-ring signal.
 const RING_TIMEOUT_MS = 60_000;
 
-// Public STUN only for this first pass — sufficient unless an agent's office
-// network needs a TURN relay (see the calling-feature plan's own "Risks"
-// section); revisit if a real test call connects signaling but never gets
-// audio.
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+// Bare STUN fallback if /api/calls/turn-credentials can't be reached at
+// all (network hiccup, not just "Cloudflare isn't configured yet" — that
+// case already falls back server-side). Real incident, 2026-09-10: a
+// STUN-only config let call SIGNALING connect (both sides showed
+// "answered") but audio never flowed either direction — a NAT/firewall on
+// the agent's network needs an actual TURN relay, not just STUN's
+// public-IP discovery.
+const STUN_ONLY_FALLBACK: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+
+async function fetchIceServers(): Promise<RTCIceServer[]> {
+  try {
+    const response = await fetch("/api/calls/turn-credentials");
+    if (!response.ok) return STUN_ONLY_FALLBACK;
+    const data: { iceServers?: RTCIceServer[] } = await response.json();
+    return data.iceServers && data.iceServers.length > 0 ? data.iceServers : STUN_ONLY_FALLBACK;
+  } catch {
+    return STUN_ONLY_FALLBACK;
+  }
+}
 
 interface RingingCall {
   callId: string;
@@ -175,12 +189,14 @@ export function IncomingCallOverlay() {
     if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
 
     try {
-      console.log("[call] requesting microphone…");
+      console.log("[call] fetching TURN credentials…");
+      const iceServers = await fetchIceServers();
+      console.log(`[call] got ${iceServers.length} ICE server(s), requesting microphone…`);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
       console.log("[call] microphone granted, creating RTCPeerConnection…");
 
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers });
       pcRef.current = pc;
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
       pc.ontrack = (event) => {
