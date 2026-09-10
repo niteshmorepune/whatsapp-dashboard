@@ -54,6 +54,8 @@ CRM_GOAL_CAPTURE_URL=
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=
+CLOUDFLARE_TURN_KEY_ID=
+CLOUDFLARE_TURN_KEY_API_TOKEN=
 ```
 (The three `VAPID_*` vars, for web push to agents, were missing from this
 list entirely until the same 2026-09-09 incident below surfaced them —

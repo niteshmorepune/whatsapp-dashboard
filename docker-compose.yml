@@ -34,6 +34,11 @@ services:
       - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
+      # WhatsApp Calling API audio fix, 2026-09-10 — see
+      # api/calls/turn-credentials/route.ts. Same "must be listed here or
+      # Compose never passes it through" gotcha as every var above.
+      - CLOUDFLARE_TURN_KEY_ID=${CLOUDFLARE_TURN_KEY_ID}
+      - CLOUDFLARE_TURN_KEY_API_TOKEN=${CLOUDFLARE_TURN_KEY_API_TOKEN}
     depends_on:
       db:
         condition: service_healthy
