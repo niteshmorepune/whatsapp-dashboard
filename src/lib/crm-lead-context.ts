@@ -18,6 +18,18 @@ export interface CrmLeadContext {
   needsLink?: boolean;
   websiteUrl?: string | null;
   gbpUrl?: string | null;
+  // 2026-09-13 — the CRM's own unified goal+budget recommendation matrix
+  // (one of LeadGenerationAudit/WebsiteGrowthAudit/GrowthStrategy — never
+  // GbpAudit, which stays exclusively on visibilityAuditOfferUrl above so
+  // its own funnel-tracking redirect keeps firing). Null until the CRM has
+  // actually resolved a recommendation for this lead. Real gap this closes:
+  // the after-hours assistant used to only ever know about the GBP offer,
+  // so it kept recommending that even for a lead the matrix had resolved
+  // into a completely different, better-fitting offer (confirmed live on
+  // lead #382 in the CRM).
+  recommendedOfferName?: string | null;
+  recommendedOfferPrice?: number | null;
+  recommendedOfferUrl?: string | null;
 }
 
 /**
@@ -70,6 +82,9 @@ export async function getCrmLeadContext(phone: string): Promise<CrmLeadContext |
       needsLink: data.needs_link ?? false,
       websiteUrl: data.website_url ?? null,
       gbpUrl: data.gbp_url ?? null,
+      recommendedOfferName: data.recommended_offer_name ?? null,
+      recommendedOfferPrice: data.recommended_offer_price ?? null,
+      recommendedOfferUrl: data.recommended_offer_url ?? null,
     };
   } catch (error) {
     console.error("CRM lead-context lookup failed:", error);

@@ -61,7 +61,19 @@ function buildLeadContextBlock(context: Awaited<ReturnType<typeof getCrmLeadCont
     lines.push(`Other answers they gave on the form:\n${context.additionalAnswers}`);
   }
 
-  if (context.visibilityAuditOfferUrl) {
+  // recommendedOfferUrl (one of the 3 non-GBP offers) takes priority over
+  // visibilityAuditOfferUrl when both could apply — it's the CRM's own
+  // goal+budget matrix decision for THIS lead specifically, not just "are
+  // they GBP-eligible." A lead the matrix resolved into GbpAudit has no
+  // recommendedOfferUrl at all (the CRM omits it deliberately — see
+  // LeadContextController::show()), so visibilityAuditOfferUrl is exactly
+  // the right, and only, offer link in that case.
+  if (context.recommendedOfferUrl) {
+    const priceSuffix = context.recommendedOfferPrice != null ? ` (₹${context.recommendedOfferPrice})` : "";
+    lines.push(
+      `Based on their form answers, our system has already put together a personalized recommendation for them: ${context.recommendedOfferName ?? "a diagnostic offer"}${priceSuffix} — a real, already-priced offer, not something you're inventing. Offer it as a concrete next step they can act on right now instead of only promising a future follow-up: ${context.recommendedOfferUrl}`
+    );
+  } else if (context.visibilityAuditOfferUrl) {
     lines.push(
       `They're eligible for our self-serve Visibility Audit offer — a real, already-priced page, not something you're inventing. Offer it as a concrete next step they can act on right now instead of only promising a future follow-up: ${context.visibilityAuditOfferUrl}`
     );
