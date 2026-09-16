@@ -3,13 +3,19 @@ interface PostCrmGoalCaptureParams {
   goal?: string;
   websiteUrl?: string;
   gbpUrl?: string;
+  // 2026-09-17 — one of the CRM's LeadBudgetRange enum values (e.g.
+  // "under_3000"), written back once the budget-capture step of the same
+  // WhatsApp flow gets an answer. Same partial-update endpoint as goal/
+  // websiteUrl/gbpUrl — see the CRM's LeadContextController::updateGoal().
+  budgetRange?: string;
 }
 
 /**
  * Writes back to the NEDS CRM once the after-hours assistant's own
- * goal-question flow (src/lib/goal-flow.ts) gets an answer — the reverse
- * direction of crm-lead-context.ts's read. Same CRM_WEBHOOK_TOKEN trust
- * boundary as every other wadesk.in <-> CRM call.
+ * goal-question flow (src/lib/goal-flow.ts) gets an answer — goal,
+ * website/GBP link, or (2026-09-17) budget_range, whichever step just
+ * completed — the reverse direction of crm-lead-context.ts's read. Same
+ * CRM_WEBHOOK_TOKEN trust boundary as every other wadesk.in <-> CRM call.
  *
  * Unlike notifyCrm()'s pure fire-and-forget (a duplicate timeline entry is
  * harmless to lose), this data actually drives what happens next in the
@@ -41,6 +47,7 @@ export async function postCrmGoalCapture(params: PostCrmGoalCaptureParams): Prom
         goal: params.goal,
         website_url: params.websiteUrl,
         gbp_url: params.gbpUrl,
+        budget_range: params.budgetRange,
       }),
       signal: controller.signal,
     });

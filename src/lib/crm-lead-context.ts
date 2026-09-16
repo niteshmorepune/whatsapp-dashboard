@@ -18,6 +18,12 @@ export interface CrmLeadContext {
   needsLink?: boolean;
   websiteUrl?: string | null;
   gbpUrl?: string | null;
+  // 2026-09-17 — one of the CRM's LeadBudgetRange enum values (e.g.
+  // "under_3000") or null if never asked/answered yet. Powers the
+  // after-hours assistant's budget-capture step, chained onto the same
+  // goal-question flow (see src/lib/goal-flow.ts) — GenerateLeadRecommendation
+  // needs both goal and budget_range non-null to resolve a priced offer.
+  budgetRange?: string | null;
   // 2026-09-13 — the CRM's own unified goal+budget recommendation matrix
   // (one of LeadGenerationAudit/WebsiteGrowthAudit/GrowthStrategy — never
   // GbpAudit, which stays exclusively on visibilityAuditOfferUrl above so
@@ -82,6 +88,7 @@ export async function getCrmLeadContext(phone: string): Promise<CrmLeadContext |
       needsLink: data.needs_link ?? false,
       websiteUrl: data.website_url ?? null,
       gbpUrl: data.gbp_url ?? null,
+      budgetRange: data.budget_range ?? null,
       recommendedOfferName: data.recommended_offer_name ?? null,
       recommendedOfferPrice: data.recommended_offer_price ?? null,
       recommendedOfferUrl: data.recommended_offer_url ?? null,
