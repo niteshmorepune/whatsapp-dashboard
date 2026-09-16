@@ -120,8 +120,8 @@ async function askGoalQuestion(
   });
 
   const body = greetingName
-    ? `Hi ${greetingName}, thanks for reaching out to NEDS Enterprises! To help you best, what's your biggest goal right now?`
-    : `Thanks for reaching out to NEDS Enterprises! To help you best, what's your biggest goal right now?`;
+    ? `Hi ${greetingName}, thanks for reaching out to Niranjan Enterprises Digital Solutions! To help you best, what's your biggest goal right now?`
+    : `Thanks for reaching out to Niranjan Enterprises Digital Solutions! To help you best, what's your biggest goal right now?`;
 
   await sendAndPersist(whatsappNumber, conversation, contact, body, () =>
     sendInteractiveListMessage(toMetaConfig(whatsappNumber), contact.phone, body, "Choose one", GOAL_OPTIONS)
