@@ -3,7 +3,7 @@ import { sendTextMessage, sendInteractiveListMessage } from "@/lib/meta";
 import { toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents } from "@/lib/sse";
 import { notifyCrm } from "@/lib/crm-notify";
-import { getCrmLeadContext } from "@/lib/crm-lead-context";
+import { getCrmLeadContext, type CrmLeadContext } from "@/lib/crm-lead-context";
 import { postCrmGoalCapture } from "@/lib/crm-goal-capture";
 import type { WhatsappNumber, Conversation, Contact } from "@prisma/client";
 
@@ -19,6 +19,17 @@ const GOAL_OPTIONS = [
 ] as const;
 const GOAL_IDS = new Set<string>(GOAL_OPTIONS.map((o) => o.id));
 
+// Must exactly match the CRM's App\Enums\LeadBudgetRange ->value strings —
+// same "row id IS the literal enum value" contract as GOAL_OPTIONS above.
+// See the CRM's app/Enums/LeadBudgetRange.php.
+const BUDGET_OPTIONS = [
+  { id: "under_3000", title: "Under ₹3,000" },
+  { id: "3000_6000", title: "₹3,000 – ₹6,000" },
+  { id: "6000_12000", title: "₹6,000 – ₹12,000" },
+  { id: "12000_plus", title: "₹12,000+" },
+] as const;
+const BUDGET_IDS = new Set<string>(BUDGET_OPTIONS.map((o) => o.id));
+
 // Deliberately permissive -- a lead texting back their link rarely bothers
 // with the http(s) scheme, so a bare domain counts too. Good enough for
 // "did they actually share something link-shaped," not a full RFC 3986
@@ -31,11 +42,20 @@ const URL_LIKE_PATTERN = /(https?:\/\/\S+)|([a-z0-9-]+\.(com|in|co|org|net|busin
  * WhatsApp -- asks the same "biggest goal" question the CRM's telecaller UI
  * asks live on a call, for a lead who only ever messages and never gets a
  * call. Deterministic, no Anthropic call: the question is a fixed
- * template, the goal answer is matched off the WhatsApp interactive list's
- * own row id (exact match on what the lead tapped, never inferred from
- * free text), and the link-capture step is a plain regex, not an LLM
+ * template, the goal/budget answer is matched off the WhatsApp interactive
+ * list's own row id (exact match on what the lead tapped, never inferred
+ * from free text), and the link-capture step is a plain regex, not an LLM
  * judgment call -- keeps this flow reliable and free to run on every
  * eligible after-hours reply.
+ *
+ * Extended 2026-09-17 with a third step, budget capture, chained onto the
+ * same aiFlowPending state machine as goal/link ("goal" -> "link" (only for
+ * a goal that needs one) -> "budget" (only if still missing) -> done) --
+ * same shape, not a new pattern. GenerateLeadRecommendation on the CRM side
+ * needs BOTH goal and budget_range to resolve a priced offer, so a lead
+ * that only ever got asked its goal never reaches one; this closes that
+ * gap for leads whose budget was never captured at import time either
+ * (see App\Jobs\ImportMetaLead::matchBudgetRange(), untouched by this).
  *
  * Called from maybeReplyWithAi() (ai-assistant.ts) after all of its
  * existing guards (aiMuted, opted-out, business-hours/AI-live, cooldown)
@@ -61,17 +81,28 @@ export async function maybeRunGoalFlow(
   if (!leadContext || !leadContext.found) return false;
 
   if (conversation.aiFlowPending === "goal") {
-    return handleGoalAnswer(whatsappNumber, conversation, contact, interactiveReplyId);
+    return handleGoalAnswer(whatsappNumber, conversation, contact, interactiveReplyId, leadContext);
   }
 
   if (conversation.aiFlowPending === "link") {
-    return handleLinkAnswer(whatsappNumber, conversation, contact, content);
+    return handleLinkAnswer(whatsappNumber, conversation, contact, content, leadContext);
+  }
+
+  if (conversation.aiFlowPending === "budget") {
+    return handleBudgetAnswer(whatsappNumber, conversation, contact, interactiveReplyId);
   }
 
   // Nothing pending -- ask, but only the very first time (any channel) a
-  // Lead has no goal on file yet.
+  // Lead is still missing the relevant field. Goal always comes first when
+  // both are missing (the common case for most ad forms) so the two
+  // questions never interleave; a lead that already has a goal but no
+  // budget skips straight to the budget question instead of re-asking goal.
   if (leadContext.goal == null) {
     return askGoalQuestion(whatsappNumber, conversation, contact, leadContext.name ?? contact.name);
+  }
+
+  if (leadContext.budgetRange == null) {
+    return askBudgetQuestion(whatsappNumber, conversation, contact);
   }
 
   return false;
@@ -103,7 +134,8 @@ async function handleGoalAnswer(
   whatsappNumber: WhatsappNumber,
   conversation: Conversation,
   contact: Contact,
-  interactiveReplyId: string | null
+  interactiveReplyId: string | null,
+  leadContext: CrmLeadContext
 ): Promise<boolean> {
   const matchedId = interactiveReplyId && GOAL_IDS.has(interactiveReplyId) ? interactiveReplyId : null;
 
@@ -119,12 +151,19 @@ async function handleGoalAnswer(
   await postCrmGoalCapture({ phone: contact.phone, goal: matchedId });
 
   if (matchedId === "not_sure") {
-    await prisma.conversation.update({ where: { id: conversation.id }, data: { aiFlowPending: null } });
     const text =
       "Thanks! I've let our Sales Expert know — they'll reach out to you shortly to help directly.";
     await sendAndPersist(whatsappNumber, conversation, contact, text, () =>
       sendTextMessage(toMetaConfig(whatsappNumber), contact.phone, text)
     );
+
+    // No link needed for Not Sure (LeadGoal::needsWebsiteOrGbp() is false),
+    // so budget is the next and final step in the chain, same "still
+    // missing? ask; otherwise done" rule as every other transition here.
+    if (leadContext.budgetRange == null) {
+      return askBudgetQuestion(whatsappNumber, conversation, contact);
+    }
+    await prisma.conversation.update({ where: { id: conversation.id }, data: { aiFlowPending: null } });
     return true;
   }
 
@@ -140,15 +179,17 @@ async function handleLinkAnswer(
   whatsappNumber: WhatsappNumber,
   conversation: Conversation,
   contact: Contact,
-  content: string
+  content: string,
+  leadContext: CrmLeadContext
 ): Promise<boolean> {
   const match = content.match(URL_LIKE_PATTERN);
 
-  await prisma.conversation.update({ where: { id: conversation.id }, data: { aiFlowPending: null } });
-
   if (!match) {
-    // Nothing link-shaped in the reply -- don't nag for it a second time;
-    // let the normal reply flow handle whatever they actually said.
+    // Nothing link-shaped in the reply -- don't nag for it a second time,
+    // and don't chain into the budget question either (they may be
+    // replying to something else entirely); let the normal reply flow
+    // handle whatever they actually said.
+    await prisma.conversation.update({ where: { id: conversation.id }, data: { aiFlowPending: null } });
     return false;
   }
 
@@ -156,6 +197,54 @@ async function handleLinkAnswer(
   await postCrmGoalCapture({ phone: contact.phone, websiteUrl: url });
 
   const text = "Got it, thank you! Our team will take a look and follow up with you soon.";
+  await sendAndPersist(whatsappNumber, conversation, contact, text, () =>
+    sendTextMessage(toMetaConfig(whatsappNumber), contact.phone, text)
+  );
+
+  if (leadContext.budgetRange == null) {
+    return askBudgetQuestion(whatsappNumber, conversation, contact);
+  }
+  await prisma.conversation.update({ where: { id: conversation.id }, data: { aiFlowPending: null } });
+  return true;
+}
+
+async function askBudgetQuestion(
+  whatsappNumber: WhatsappNumber,
+  conversation: Conversation,
+  contact: Contact
+): Promise<boolean> {
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: { aiFlowPending: "budget" },
+  });
+
+  const body = "One more thing — what's your approximate monthly marketing budget?";
+
+  await sendAndPersist(whatsappNumber, conversation, contact, body, () =>
+    sendInteractiveListMessage(toMetaConfig(whatsappNumber), contact.phone, body, "Choose one", BUDGET_OPTIONS)
+  );
+
+  return true;
+}
+
+async function handleBudgetAnswer(
+  whatsappNumber: WhatsappNumber,
+  conversation: Conversation,
+  contact: Contact,
+  interactiveReplyId: string | null
+): Promise<boolean> {
+  const matchedId = interactiveReplyId && BUDGET_IDS.has(interactiveReplyId) ? interactiveReplyId : null;
+
+  await prisma.conversation.update({ where: { id: conversation.id }, data: { aiFlowPending: null } });
+
+  if (!matchedId) {
+    // Same "give up gracefully, don't re-ask" rule as the goal step above.
+    return false;
+  }
+
+  await postCrmGoalCapture({ phone: contact.phone, budgetRange: matchedId });
+
+  const text = "Perfect, thank you! Our team will review this and follow up with the best next step for you.";
   await sendAndPersist(whatsappNumber, conversation, contact, text, () =>
     sendTextMessage(toMetaConfig(whatsappNumber), contact.phone, text)
   );
