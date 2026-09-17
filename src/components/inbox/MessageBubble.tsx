@@ -1,6 +1,6 @@
 import { Message } from "@/types";
 import { format } from "date-fns";
-import { Check, CheckCheck, Clock, XCircle, FileText, Download, Bot } from "lucide-react";
+import { Check, CheckCheck, Clock, XCircle, FileText, Download, Bot, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MessageBubbleProps {
@@ -52,9 +52,22 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         )}
 
         {/* Media content */}
-        {message.mediaType && message.mediaUrl && (
+        {message.mediaType && (message.mediaUrl || message.mediaType === "location") && (
           <div className="mb-2">
-            {message.mediaType === "image" ? (
+            {message.mediaType === "location" ? (
+              <a
+                href={message.content.split("\n").pop()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-black/20 hover:bg-black/30 rounded-lg px-3 py-2 transition"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MapPin className="w-4 h-4 flex-shrink-0" />
+                <span className="text-xs truncate flex-1">
+                  {message.content.split("\n").slice(0, -1).join(" · ") || "View location"}
+                </span>
+              </a>
+            ) : message.mediaType === "image" ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={mediaUrl}
@@ -85,8 +98,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Text / caption — hide if it's a doc filename already shown inside the download link */}
-        {(message.content && message.mediaType !== "document") || !message.mediaType ? (
+        {/* Text / caption — hide if it's a doc filename or location link already shown above */}
+        {(message.content && message.mediaType !== "document" && message.mediaType !== "location") ||
+        !message.mediaType ? (
           <p className="text-sm text-white leading-relaxed whitespace-pre-wrap break-words">
             {message.content}
           </p>

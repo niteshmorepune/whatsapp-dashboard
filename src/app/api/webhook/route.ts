@@ -106,6 +106,7 @@ async function handleInboundMessage(
     document?: { id: string; mime_type: string; filename?: string };
     audio?: { id: string; mime_type: string };
     video?: { id: string; mime_type: string };
+    location?: { latitude: number; longitude: number; name?: string; address?: string };
     // A tap on a template's Quick Reply button (not a URL/phone button —
     // those never generate an inbound webhook event at all).
     button?: { payload: string; text: string };
@@ -122,6 +123,15 @@ async function handleInboundMessage(
 ) {
   const phone = msg.from;
   const metaMessageId = msg.id;
+  const locationContent = msg.location
+    ? [
+        msg.location.name,
+        msg.location.address,
+        `https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : null;
   const content =
     msg.text?.body ||
     msg.image?.caption ||
@@ -131,6 +141,7 @@ async function handleInboundMessage(
     msg.interactive?.list_reply?.title ||
     msg.errors?.[0]?.title ||
     msg.errors?.[0]?.message ||
+    locationContent ||
     `[${msg.type}]`;
   // The tapped row/button's own stable id, separate from `content` above
   // (which only carries its display title) — the goal-question flow
@@ -153,6 +164,12 @@ async function handleInboundMessage(
   } else if (msg.video) {
     mediaType = "video";
     mediaUrl = msg.video.id;
+  } else if (msg.location) {
+    // No Meta media id for a location share — the coordinates/link already
+    // live in `content` above, so mediaUrl stays null; mediaType is only
+    // set here so the UI can render it distinctly (map pin icon, clickable
+    // link) instead of the generic text bubble.
+    mediaType = "location";
   }
 
   // Find or create contact

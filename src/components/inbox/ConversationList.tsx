@@ -156,7 +156,17 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
         if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
           const name = conversation.contact?.name ?? conversation.contact?.phone ?? "New message";
           const body = message.mediaType
-            ? `Sent ${message.mediaType === "image" ? "an image" : message.mediaType === "audio" ? "a voice message" : message.mediaType === "video" ? "a video" : "a document"}`
+            ? `Sent ${
+                message.mediaType === "image"
+                  ? "an image"
+                  : message.mediaType === "audio"
+                    ? "a voice message"
+                    : message.mediaType === "video"
+                      ? "a video"
+                      : message.mediaType === "location"
+                        ? "a location"
+                        : "a document"
+              }`
             : message.content || "New message";
           const notif = new Notification(name, {
             body,
