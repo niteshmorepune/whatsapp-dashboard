@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents, getConnectedAgentIds } from "@/lib/sse";
@@ -26,10 +27,52 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 
+/**
+ * Verifies Meta's X-Hub-Signature-256 header (HMAC-SHA256 of the raw request
+ * body, keyed with the app's own App Secret) — without this, anyone who
+ * learns/guesses this URL can POST a forged payload (fake inbound message,
+ * fake call, fake status update) and it's processed exactly like a real one.
+ * Must run against the raw body bytes, not the parsed JSON — re-serializing
+ * JSON can change whitespace/key order and silently break every signature.
+ *
+ * META_APP_SECRET is a separate value from META_ACCESS_TOKEN: it's the app's
+ * "App Secret" from Meta App Dashboard -> Settings -> Basic (not a WABA/
+ * phone-number setting). Until it's set in the environment, verification is
+ * skipped (fail-open, loudly logged) rather than breaking live inbound
+ * WhatsApp traffic on deploy — same "ships inert until manually configured"
+ * pattern as this app's other Meta-dependent integrations.
+ */
+function isValidMetaSignature(rawBody: string, signatureHeader: string | null): boolean {
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appSecret) {
+    console.error(
+      "Webhook: META_APP_SECRET is not configured — signature verification is DISABLED and inbound payloads are trusted unverified. Set META_APP_SECRET (Meta App Dashboard -> Settings -> Basic -> App Secret) to close this gap."
+    );
+    return true;
+  }
+
+  if (!signatureHeader?.startsWith("sha256=")) return false;
+  const provided = signatureHeader.slice("sha256=".length);
+
+  const expected = crypto.createHmac("sha256", appSecret).update(rawBody, "utf8").digest("hex");
+
+  const providedBuf = Buffer.from(provided, "hex");
+  const expectedBuf = Buffer.from(expected, "hex");
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
+}
+
 // POST: Incoming webhook events
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const rawBody = await request.text();
+
+    if (!isValidMetaSignature(rawBody, request.headers.get("x-hub-signature-256"))) {
+      console.error("Webhook: invalid X-Hub-Signature-256 — payload rejected");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    const body = JSON.parse(rawBody);
 
     if (body.object !== "whatsapp_business_account") {
       return NextResponse.json({ status: "ignored" });
