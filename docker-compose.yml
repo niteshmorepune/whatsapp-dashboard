@@ -10,6 +10,11 @@ services:
       - META_PHONE_NUMBER_ID=${META_PHONE_NUMBER_ID}
       - META_WABA_ID=${META_WABA_ID}
       - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN}
+      # Verifies Meta's X-Hub-Signature-256 on inbound webhook deliveries
+      # (2026-09-18 security audit, commit 7a50979) — was applied directly
+      # on the server during that deploy but never committed back here,
+      # found as an uncommitted local diff blocking a later git pull.
+      - META_APP_SECRET=${META_APP_SECRET}
       # 2026-09-09 — these were all correctly set in .env but never actually
       # reached the container: Compose only injects a variable into the
       # service if it's named here, regardless of what .env defines. Real
