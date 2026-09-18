@@ -15,8 +15,9 @@ import { agentHasAccessToNumber } from "@/lib/whatsapp-numbers";
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,7 +37,7 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const contact = await prisma.contact.findUnique({ where: { id: params.id } });
+    const contact = await prisma.contact.findUnique({ where: { id: resolvedParams.id } });
     if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
 
     let conversation = await prisma.conversation.findFirst({

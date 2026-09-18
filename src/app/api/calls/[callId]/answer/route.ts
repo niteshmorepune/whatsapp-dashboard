@@ -13,7 +13,8 @@ import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } fro
  * the same instant can't both succeed; the loser gets 409, not a real
  * duplicate accept sent to Meta.
  */
-export async function POST(request: NextRequest, { params }: { params: { callId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ callId: string }> }) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
     if (!sdpAnswer) return NextResponse.json({ error: "sdpAnswer is required" }, { status: 400 });
 
     const call = await prisma.call.findUnique({
-      where: { id: params.callId },
+      where: { id: resolvedParams.callId },
       include: { conversation: { include: { whatsappNumber: true } } },
     });
     if (!call) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const claim = await prisma.call.updateMany({
-      where: { id: params.callId, status: "RINGING" },
+      where: { id: resolvedParams.callId, status: "RINGING" },
       data: { status: "ANSWERED", answeredByAgentId: session.user.id, answeredAt: new Date() },
     });
     if (claim.count === 0) {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
       // Roll back so another agent (or a manual retry) can still take it —
       // Meta never actually connected the media, so ANSWERED would be a lie.
       await prisma.call.update({
-        where: { id: params.callId },
+        where: { id: resolvedParams.callId },
         data: { status: "RINGING", answeredByAgentId: null, answeredAt: null },
       });
       const detail = extractMetaErrorMessage(error);

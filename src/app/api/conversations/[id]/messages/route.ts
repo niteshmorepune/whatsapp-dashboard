@@ -6,14 +6,15 @@ import { agentHasAccessToNumber, isConversationVisibleGivenAccess } from "@/lib/
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const conversation = await prisma.conversation.findUnique({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       select: {
         whatsappNumberId: true,
         assignees: { select: { agentId: true, coverUntil: true } },
@@ -34,7 +35,7 @@ export async function GET(
     const limit = parseInt(searchParams.get("limit") ?? "50");
 
     const messages = await prisma.message.findMany({
-      where: { conversationId: params.id },
+      where: { conversationId: resolvedParams.id },
       include: { sentByAgent: true },
       orderBy: { createdAt: "desc" },
       take: limit,

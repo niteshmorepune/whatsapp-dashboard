@@ -6,8 +6,9 @@ import { isServiceKeyRequest } from "@/lib/service-key";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   // Server-to-server callers (the CRM, importing a WhatsApp ticket's media
   // into a real Attachment) authenticate via the same X-Service-Key shared
   // secret used for every other CRM<->wadesk call, since they have no
@@ -39,7 +40,7 @@ export async function GET(
   const filename = request.nextUrl.searchParams.get("filename") ?? "file";
 
   // Resolve media ID to a download URL
-  const metaRes = await fetch(`https://graph.facebook.com/v18.0/${params.id}`, {
+  const metaRes = await fetch(`https://graph.facebook.com/v18.0/${resolvedParams.id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 

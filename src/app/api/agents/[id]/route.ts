@@ -6,8 +6,9 @@ import bcrypt from "bcryptjs";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,7 +21,7 @@ export async function PATCH(
 
     if (email !== undefined) {
       const conflict = await prisma.agent.findFirst({
-        where: { email, NOT: { id: params.id } },
+        where: { email, NOT: { id: resolvedParams.id } },
       });
       if (conflict) {
         return NextResponse.json({ error: "Email already in use" }, { status: 409 });
@@ -28,17 +29,17 @@ export async function PATCH(
     }
 
     if (Array.isArray(whatsappNumberIds)) {
-      await prisma.agentWhatsappNumber.deleteMany({ where: { agentId: params.id } });
+      await prisma.agentWhatsappNumber.deleteMany({ where: { agentId: resolvedParams.id } });
       if (whatsappNumberIds.length > 0) {
         await prisma.agentWhatsappNumber.createMany({
-          data: whatsappNumberIds.map((whatsappNumberId: string) => ({ agentId: params.id, whatsappNumberId })),
+          data: whatsappNumberIds.map((whatsappNumberId: string) => ({ agentId: resolvedParams.id, whatsappNumberId })),
           skipDuplicates: true,
         });
       }
     }
 
     const agent = await prisma.agent.update({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       data: {
         ...(name !== undefined && { name }),
         ...(email !== undefined && { email }),
@@ -69,8 +70,9 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -80,7 +82,7 @@ export async function DELETE(
 
     // Soft delete - deactivate instead
     const agent = await prisma.agent.update({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       data: { isActive: false },
       select: { id: true, isActive: true },
     });

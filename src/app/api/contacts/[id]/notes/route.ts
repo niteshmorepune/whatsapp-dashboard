@@ -5,13 +5,14 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const notes = await prisma.contactNote.findMany({
-    where: { contactId: params.id },
+    where: { contactId: resolvedParams.id },
     include: { agent: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -20,8 +21,9 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -29,7 +31,7 @@ export async function POST(
   if (!content?.trim()) return NextResponse.json({ error: "Content is required" }, { status: 400 });
 
   const note = await prisma.contactNote.create({
-    data: { contactId: params.id, agentId: session.user.id, content: content.trim() },
+    data: { contactId: resolvedParams.id, agentId: session.user.id, content: content.trim() },
     include: { agent: { select: { id: true, name: true } } },
   });
   return NextResponse.json(note, { status: 201 });

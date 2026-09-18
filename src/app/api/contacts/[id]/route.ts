@@ -5,14 +5,15 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const contact = await prisma.contact.findUnique({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: {
         conversations: {
           include: {
@@ -38,8 +39,9 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,7 +50,7 @@ export async function PATCH(
     const { name, email, tags, optedOut } = body;
 
     const contact = await prisma.contact.update({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       data: {
         ...(name !== undefined && { name }),
         ...(email !== undefined && { email }),
@@ -66,13 +68,14 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    await prisma.contact.delete({ where: { id: params.id } });
+    await prisma.contact.delete({ where: { id: resolvedParams.id } });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error(error);

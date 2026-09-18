@@ -8,13 +8,14 @@ import { agentHasAccessToNumber, toMetaConfig, getAgentIdsWithNumberAccess } fro
 import { recordCallSummaryMessage } from "@/lib/call-summary";
 
 /** Agent declines a ringing call. Same atomic-claim shape as answer/route.ts. */
-export async function POST(request: NextRequest, { params }: { params: { callId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ callId: string }> }) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const call = await prisma.call.findUnique({
-      where: { id: params.callId },
+      where: { id: resolvedParams.callId },
       include: { conversation: { include: { whatsappNumber: true } } },
     });
     if (!call) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
     if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const claim = await prisma.call.updateMany({
-      where: { id: params.callId, status: "RINGING" },
+      where: { id: resolvedParams.callId, status: "RINGING" },
       data: { status: "REJECTED", endedAt: new Date() },
     });
     if (claim.count === 0) {

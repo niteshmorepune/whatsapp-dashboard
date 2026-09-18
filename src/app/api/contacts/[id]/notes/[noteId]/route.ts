@@ -5,18 +5,19 @@ import { prisma } from "@/lib/prisma";
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string; noteId: string } }
+  { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const note = await prisma.contactNote.findUnique({ where: { id: params.noteId } });
+  const note = await prisma.contactNote.findUnique({ where: { id: resolvedParams.noteId } });
   if (!note) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Only the note author or an admin can delete
   if (note.agentId !== session.user.id && session.user.role !== "ADMIN")
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  await prisma.contactNote.delete({ where: { id: params.noteId } });
+  await prisma.contactNote.delete({ where: { id: resolvedParams.noteId } });
   return NextResponse.json({ ok: true });
 }

@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,11 +29,11 @@ export async function PATCH(
       if (isDefault === true) {
         await tx.whatsappNumber.updateMany({
           data: { isDefault: false },
-          where: { isDefault: true, NOT: { id: params.id } },
+          where: { isDefault: true, NOT: { id: resolvedParams.id } },
         });
       }
       return tx.whatsappNumber.update({
-        where: { id: params.id },
+        where: { id: resolvedParams.id },
         data: {
           ...(label !== undefined && { label }),
           ...(businessNumber !== undefined && { businessNumber }),

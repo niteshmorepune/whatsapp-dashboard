@@ -5,12 +5,13 @@ import { prisma } from "@/lib/prisma";
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  await prisma.holiday.delete({ where: { id: params.id } });
+  await prisma.holiday.delete({ where: { id: resolvedParams.id } });
   return NextResponse.json({ ok: true });
 }

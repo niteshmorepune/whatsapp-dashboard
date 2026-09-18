@@ -16,14 +16,15 @@ import {
  */
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string; agentId: string } }
+  { params }: { params: Promise<{ id: string; agentId: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const existing = await prisma.conversation.findUnique({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: {
         assignees: { select: { agentId: true, coverUntil: true } },
         whatsappNumber: { select: { restrictToOwnLeads: true } },
@@ -43,11 +44,11 @@ export async function DELETE(
     }
 
     await prisma.conversationAssignee.deleteMany({
-      where: { conversationId: params.id, agentId: params.agentId },
+      where: { conversationId: resolvedParams.id, agentId: resolvedParams.agentId },
     });
 
     const updated = await prisma.conversation.findUniqueOrThrow({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: { contact: true, assignees: { include: { agent: true } } },
     });
 

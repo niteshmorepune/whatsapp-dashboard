@@ -12,13 +12,14 @@ import { recordCallSummaryMessage, syncCompletedCallToCrm } from "@/lib/call-sum
  * whoever answered — same as any granted agent can already message on a
  * conversation regardless of who's assigned.
  */
-export async function POST(request: NextRequest, { params }: { params: { callId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ callId: string }> }) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const call = await prisma.call.findUnique({
-      where: { id: params.callId },
+      where: { id: resolvedParams.callId },
       include: { conversation: { include: { whatsappNumber: true } } },
     });
     if (!call) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: { callId:
       : null;
 
     const claim = await prisma.call.updateMany({
-      where: { id: params.callId, status: "ANSWERED" },
+      where: { id: resolvedParams.callId, status: "ANSWERED" },
       data: { status: "COMPLETED", endedAt, durationSeconds },
     });
     if (claim.count === 0) {

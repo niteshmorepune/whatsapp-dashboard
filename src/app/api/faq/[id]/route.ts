@@ -5,15 +5,16 @@ import { prisma } from "@/lib/prisma";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { question, answer, isActive, whatsappNumberId } = await request.json();
   const entry = await prisma.faqEntry.update({
-    where: { id: params.id },
+    where: { id: resolvedParams.id },
     data: {
       ...(question !== undefined && { question: question.trim() }),
       ...(answer !== undefined && { answer: answer.trim() }),
@@ -27,12 +28,13 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  await prisma.faqEntry.delete({ where: { id: params.id } });
+  await prisma.faqEntry.delete({ where: { id: resolvedParams.id } });
   return NextResponse.json({ ok: true });
 }

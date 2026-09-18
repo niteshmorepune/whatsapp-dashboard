@@ -18,8 +18,9 @@ import {
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,7 +29,7 @@ export async function POST(
     if (!agentId) return NextResponse.json({ error: "agentId is required" }, { status: 400 });
 
     const existing = await prisma.conversation.findUnique({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: {
         assignees: { select: { agentId: true, coverUntil: true } },
         whatsappNumber: { select: { restrictToOwnLeads: true } },
@@ -58,13 +59,13 @@ export async function POST(
     }
 
     await prisma.conversationAssignee.upsert({
-      where: { conversationId_agentId: { conversationId: params.id, agentId } },
-      create: { conversationId: params.id, agentId },
+      where: { conversationId_agentId: { conversationId: resolvedParams.id, agentId } },
+      create: { conversationId: resolvedParams.id, agentId },
       update: {},
     });
 
     const updated = await prisma.conversation.findUniqueOrThrow({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: { contact: true, assignees: { include: { agent: true } } },
     });
 

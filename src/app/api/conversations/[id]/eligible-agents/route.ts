@@ -17,13 +17,14 @@ import { agentHasAccessToNumber, getAgentIdsWithNumberAccess } from "@/lib/whats
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const conversation = await prisma.conversation.findUnique({ where: { id: params.id } });
+    const conversation = await prisma.conversation.findUnique({ where: { id: resolvedParams.id } });
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const requesterAllowed = await agentHasAccessToNumber(

@@ -13,13 +13,14 @@ function sleep(ms: number) {
 
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const broadcast = await prisma.broadcast.findUnique({
-    where: { id: params.id },
+    where: { id: resolvedParams.id },
     include: {
       template: true,
       whatsappNumber: true,
@@ -38,7 +39,7 @@ export async function POST(
 
   // Mark as SENDING immediately
   await prisma.broadcast.update({
-    where: { id: params.id },
+    where: { id: resolvedParams.id },
     data: { status: "SENDING" },
   });
 
@@ -104,7 +105,7 @@ export async function POST(
     }
 
     await prisma.broadcast.update({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       data: { status: "COMPLETED", sentCount: sent, failedCount: failed },
     });
   })();

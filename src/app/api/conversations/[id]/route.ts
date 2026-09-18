@@ -12,14 +12,15 @@ import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/li
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const conversation = await prisma.conversation.findUnique({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: {
         contact: true,
         assignees: { include: { agent: true } },
@@ -69,8 +70,9 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const resolvedParams = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -84,7 +86,7 @@ export async function PATCH(
     const { status, aiMuted } = body;
 
     const existing = await prisma.conversation.findUnique({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       include: {
         assignees: { select: { agentId: true, coverUntil: true } },
         whatsappNumber: { select: { restrictToOwnLeads: true } },
@@ -104,7 +106,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.conversation.update({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       data: {
         ...(status && { status }),
         ...(typeof aiMuted === "boolean" && { aiMuted }),
