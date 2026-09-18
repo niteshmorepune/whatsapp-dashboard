@@ -32,8 +32,11 @@ services:
       - WADESK_SERVICE_KEY=${WADESK_SERVICE_KEY}
       # Scoped per-purpose keys (2026-09-18 key-scoping follow-up) — see
       # src/lib/service-key.ts. Same "must be listed here or Compose never
-      # passes it through" gotcha as every var above; WADESK_SERVICE_KEY
-      # itself stays listed as the rollout fallback.
+      # passes it through" gotcha as every var above. WADESK_SERVICE_KEY
+      # above is no longer read by any route (legacy fallback retired
+      # 2026-09-18) — left listed here only because the historical
+      # comment block above it is still worth keeping; safe to delete
+      # both the var and its value from .env whenever convenient.
       - WADESK_SERVICE_KEY_MESSAGING=${WADESK_SERVICE_KEY_MESSAGING}
       - WADESK_SERVICE_KEY_LEAD_SYNC=${WADESK_SERVICE_KEY_LEAD_SYNC}
       - WADESK_SERVICE_KEY_READ=${WADESK_SERVICE_KEY_READ}

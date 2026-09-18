@@ -20,9 +20,11 @@ import crypto from "crypto";
  * purpose needs: 'messaging' (send/send-template — real financial exposure,
  * unlimited paid sends), 'lead-sync' (mute/leads-sync/leads-set-cover — lead
  * ownership/routing data mutation), 'read' (media/ai-usage — read-only).
- * The legacy unscoped WADESK_SERVICE_KEY is still accepted as a fallback on
- * every route during rollout — remove it once the CRM is confirmed sending
- * the new scoped keys (see the CRM's backlog memory for the checklist).
+ *
+ * The legacy unscoped WADESK_SERVICE_KEY fallback (accepted here during the
+ * 2026-09-18 rollout) has been retired — the CRM is confirmed sending its
+ * new scoped keys, verified via a real live call, not just deployed code.
+ * WADESK_SERVICE_KEY itself can be unset from .env at any time now.
  */
 
 export type ServiceKeyScope = "messaging" | "lead-sync" | "read";
@@ -55,18 +57,10 @@ export function isServiceKeyRequest(
   if (!provided) return false;
 
   const scoped = process.env[SCOPE_ENV_VAR[scope]];
-  const legacy = process.env.WADESK_SERVICE_KEY;
 
-  const matchedScoped = !!scoped && timingSafeStringsEqual(provided, scoped);
-  const matchedLegacy = !matchedScoped && !!legacy && timingSafeStringsEqual(provided, legacy);
-
-  if (!matchedScoped && !matchedLegacy) {
+  if (!scoped || !timingSafeStringsEqual(provided, scoped)) {
     console.warn(`[service-key] invalid key presented for ${routeLabel}`);
     return false;
-  }
-
-  if (matchedLegacy) {
-    console.warn(`[service-key] ${routeLabel} authenticated via LEGACY unscoped key — rotate this caller to the '${scope}' scoped key`);
   }
 
   if (!withinRateLimit(routeLabel, maxPerMinute)) {
