@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     // matcher so this request path reaches the handler at all.
     // Higher limit than the default -- this forwards every staff reply the
     // CRM sends on a WhatsApp ticket (Tier 3), real but moderate volume.
-    const isCrmRequest = isServiceKeyRequest(request, "POST /api/send", 100);
+    const isCrmRequest = isServiceKeyRequest(request, "POST /api/send", "messaging", 100);
 
     let session = null;
     if (!isCrmRequest) {

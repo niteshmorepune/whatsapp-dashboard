@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   try {
     // Higher limit than the default -- fires on every Lead create/reassign,
     // which can burst during a CSV import or a Meta lead-ad surge.
-    if (!isServiceKeyRequest(request, "POST /api/leads/sync", 100)) {
+    if (!isServiceKeyRequest(request, "POST /api/leads/sync", "lead-sync", 100)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

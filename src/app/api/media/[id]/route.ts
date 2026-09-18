@@ -13,7 +13,7 @@ export async function GET(
   // into a real Attachment) authenticate via the same X-Service-Key shared
   // secret used for every other CRM<->wadesk call, since they have no
   // NextAuth session cookie to send.
-  const isServiceRequest = isServiceKeyRequest(request, "GET /api/media/[id]", 100);
+  const isServiceRequest = isServiceKeyRequest(request, "GET /api/media/[id]", "read", 100);
 
   if (!isServiceRequest) {
     const session = await getServerSession(authOptions);

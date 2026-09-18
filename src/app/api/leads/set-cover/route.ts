@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
-    if (!isServiceKeyRequest(request, "POST /api/leads/set-cover")) {
+    if (!isServiceKeyRequest(request, "POST /api/leads/set-cover", "lead-sync")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

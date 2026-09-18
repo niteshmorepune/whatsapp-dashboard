@@ -24,7 +24,7 @@ import { isServiceKeyRequest } from "@/lib/service-key";
  */
 export async function POST(request: NextRequest) {
   try {
-    if (!isServiceKeyRequest(request, "POST /api/conversations/mute")) {
+    if (!isServiceKeyRequest(request, "POST /api/conversations/mute", "lead-sync")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

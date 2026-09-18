@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     // (recovery nudges, offer funnel, quotations, etc.) funnels through
     // this one route, and a cron tick can legitimately process dozens of
     // leads in one run.
-    if (!isServiceKeyRequest(request, "POST /api/send-template", 200)) {
+    if (!isServiceKeyRequest(request, "POST /api/send-template", "messaging", 200)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

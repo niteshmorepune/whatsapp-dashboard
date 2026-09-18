@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * the identical GET /api/ai/usage contract.
  */
 export async function GET(request: NextRequest) {
-  if (!isServiceKeyRequest(request, "GET /api/ai/usage")) {
+  if (!isServiceKeyRequest(request, "GET /api/ai/usage", "read")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

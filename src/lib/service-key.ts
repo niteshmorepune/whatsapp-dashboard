@@ -14,7 +14,24 @@ import crypto from "crypto";
  * differences don't leak through an early bail-out either), a per-route
  * in-memory rate limit (this app runs as a single Next.js instance, no
  * Redis — matches its own architecture), and a log line on every attempt.
+ *
+ * Scoped per PURPOSE, not one universal key for all 7 routes — the CRM is
+ * this app's only caller, but a leaked key should only grant what that one
+ * purpose needs: 'messaging' (send/send-template — real financial exposure,
+ * unlimited paid sends), 'lead-sync' (mute/leads-sync/leads-set-cover — lead
+ * ownership/routing data mutation), 'read' (media/ai-usage — read-only).
+ * The legacy unscoped WADESK_SERVICE_KEY is still accepted as a fallback on
+ * every route during rollout — remove it once the CRM is confirmed sending
+ * the new scoped keys (see the CRM's backlog memory for the checklist).
  */
+
+export type ServiceKeyScope = "messaging" | "lead-sync" | "read";
+
+const SCOPE_ENV_VAR: Record<ServiceKeyScope, string> = {
+  messaging: "WADESK_SERVICE_KEY_MESSAGING",
+  "lead-sync": "WADESK_SERVICE_KEY_LEAD_SYNC",
+  read: "WADESK_SERVICE_KEY_READ",
+};
 
 const WINDOW_MS = 60 * 1000;
 const DEFAULT_MAX_REQUESTS_PER_WINDOW = 30;
@@ -28,15 +45,28 @@ const recentHits = new Map<string, number[]>();
  * real batch traffic isn't throttled by the same cap meant to blunt a
  * leaked-key abuse scenario.
  */
-export function isServiceKeyRequest(request: Request, routeLabel: string, maxPerMinute = DEFAULT_MAX_REQUESTS_PER_WINDOW): boolean {
+export function isServiceKeyRequest(
+  request: Request,
+  routeLabel: string,
+  scope: ServiceKeyScope,
+  maxPerMinute = DEFAULT_MAX_REQUESTS_PER_WINDOW,
+): boolean {
   const provided = request.headers.get("X-Service-Key");
-  const expected = process.env.WADESK_SERVICE_KEY;
+  if (!provided) return false;
 
-  if (!provided || !expected) return false;
+  const scoped = process.env[SCOPE_ENV_VAR[scope]];
+  const legacy = process.env.WADESK_SERVICE_KEY;
 
-  if (!timingSafeStringsEqual(provided, expected)) {
+  const matchedScoped = !!scoped && timingSafeStringsEqual(provided, scoped);
+  const matchedLegacy = !matchedScoped && !!legacy && timingSafeStringsEqual(provided, legacy);
+
+  if (!matchedScoped && !matchedLegacy) {
     console.warn(`[service-key] invalid key presented for ${routeLabel}`);
     return false;
+  }
+
+  if (matchedLegacy) {
+    console.warn(`[service-key] ${routeLabel} authenticated via LEGACY unscoped key — rotate this caller to the '${scope}' scoped key`);
   }
 
   if (!withinRateLimit(routeLabel, maxPerMinute)) {
