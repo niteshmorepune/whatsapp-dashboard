@@ -25,6 +25,13 @@ services:
       # feature introduced; a pre-existing one this feature's own debugging
       # surfaced.
       - WADESK_SERVICE_KEY=${WADESK_SERVICE_KEY}
+      # Scoped per-purpose keys (2026-09-18 key-scoping follow-up) — see
+      # src/lib/service-key.ts. Same "must be listed here or Compose never
+      # passes it through" gotcha as every var above; WADESK_SERVICE_KEY
+      # itself stays listed as the rollout fallback.
+      - WADESK_SERVICE_KEY_MESSAGING=${WADESK_SERVICE_KEY_MESSAGING}
+      - WADESK_SERVICE_KEY_LEAD_SYNC=${WADESK_SERVICE_KEY_LEAD_SYNC}
+      - WADESK_SERVICE_KEY_READ=${WADESK_SERVICE_KEY_READ}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CRM_WEBHOOK_URL=${CRM_WEBHOOK_URL}
       - CRM_WEBHOOK_TOKEN=${CRM_WEBHOOK_TOKEN}
