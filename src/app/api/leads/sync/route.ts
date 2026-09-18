@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { agentHasAccessToNumber, getEligibleAgentIdsForConversation } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents, sendToAgent } from "@/lib/sse";
+import { isServiceKeyRequest } from "@/lib/service-key";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
-    const serviceKey = request.headers.get("X-Service-Key");
-    if (!serviceKey || serviceKey !== process.env.WADESK_SERVICE_KEY) {
+    // Higher limit than the default -- fires on every Lead create/reassign,
+    // which can burst during a CSV import or a Meta lead-ad surge.
+    if (!isServiceKeyRequest(request, "POST /api/leads/sync", 100)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

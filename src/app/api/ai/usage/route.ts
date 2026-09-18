@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isServiceKeyRequest } from "@/lib/service-key";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,7 @@ export const dynamic = "force-dynamic";
  * the identical GET /api/ai/usage contract.
  */
 export async function GET(request: NextRequest) {
-  const serviceKey = request.headers.get("X-Service-Key");
-  if (!serviceKey || serviceKey !== process.env.WADESK_SERVICE_KEY) {
+  if (!isServiceKeyRequest(request, "GET /api/ai/usage")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

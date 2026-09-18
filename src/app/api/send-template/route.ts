@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { sendTemplateMessage, extractMetaErrorMessage } from "@/lib/meta";
 import { toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents } from "@/lib/sse";
+import { isServiceKeyRequest } from "@/lib/service-key";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,11 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
-    const serviceKey = request.headers.get("X-Service-Key");
-    if (!serviceKey || serviceKey !== process.env.WADESK_SERVICE_KEY) {
+    // Higher limit than the default 30/min -- every CRM-triggered send
+    // (recovery nudges, offer funnel, quotations, etc.) funnels through
+    // this one route, and a cron tick can legitimately process dozens of
+    // leads in one run.
+    if (!isServiceKeyRequest(request, "POST /api/send-template", 200)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

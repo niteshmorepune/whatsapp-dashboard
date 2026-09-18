@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { agentHasAccessToNumber, getEligibleAgentIdsForConversation } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents } from "@/lib/sse";
+import { isServiceKeyRequest } from "@/lib/service-key";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
-    const serviceKey = request.headers.get("X-Service-Key");
-    if (!serviceKey || serviceKey !== process.env.WADESK_SERVICE_KEY) {
+    if (!isServiceKeyRequest(request, "POST /api/leads/set-cover")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

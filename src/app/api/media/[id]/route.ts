@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isServiceKeyRequest } from "@/lib/service-key";
 
 export async function GET(
   request: NextRequest,
@@ -11,8 +12,7 @@ export async function GET(
   // into a real Attachment) authenticate via the same X-Service-Key shared
   // secret used for every other CRM<->wadesk call, since they have no
   // NextAuth session cookie to send.
-  const serviceKey = request.headers.get("X-Service-Key");
-  const isServiceRequest = Boolean(serviceKey && serviceKey === process.env.WADESK_SERVICE_KEY);
+  const isServiceRequest = isServiceKeyRequest(request, "GET /api/media/[id]", 100);
 
   if (!isServiceRequest) {
     const session = await getServerSession(authOptions);

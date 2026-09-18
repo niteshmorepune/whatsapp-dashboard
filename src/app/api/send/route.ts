@@ -12,6 +12,7 @@ import {
   getEligibleAgentIdsForConversation,
 } from "@/lib/whatsapp-numbers";
 import { notifyCrm } from "@/lib/crm-notify";
+import { isServiceKeyRequest } from "@/lib/service-key";
 
 const MEDIA_TYPES = ["image", "document", "audio", "video"] as const;
 type MediaType = (typeof MEDIA_TYPES)[number];
@@ -26,8 +27,9 @@ export async function POST(request: NextRequest) {
     // below (there's no agent to check access for; the CRM speaks for
     // itself). middleware.ts excludes /api/send from NextAuth's route
     // matcher so this request path reaches the handler at all.
-    const serviceKey = request.headers.get("X-Service-Key");
-    const isCrmRequest = Boolean(serviceKey && serviceKey === process.env.WADESK_SERVICE_KEY);
+    // Higher limit than the default -- this forwards every staff reply the
+    // CRM sends on a WhatsApp ticket (Tier 3), real but moderate volume.
+    const isCrmRequest = isServiceKeyRequest(request, "POST /api/send", 100);
 
     let session = null;
     if (!isCrmRequest) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
 import { getEligibleAgentIdsForConversation } from "@/lib/whatsapp-numbers";
+import { isServiceKeyRequest } from "@/lib/service-key";
 
 /**
  * CRM server-to-server only (X-Service-Key, same trust boundary as
@@ -23,8 +24,7 @@ import { getEligibleAgentIdsForConversation } from "@/lib/whatsapp-numbers";
  */
 export async function POST(request: NextRequest) {
   try {
-    const serviceKey = request.headers.get("X-Service-Key");
-    if (!serviceKey || serviceKey !== process.env.WADESK_SERVICE_KEY) {
+    if (!isServiceKeyRequest(request, "POST /api/conversations/mute")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
