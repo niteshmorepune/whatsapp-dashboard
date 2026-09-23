@@ -433,7 +433,7 @@ const SECTIONS: Section[] = [
           <p className="text-sm font-medium text-white">What everyone sees in the Inbox:</p>
           <Step n={1} text="A conversation the AI is currently allowed to answer on shows an 'AI handling' badge in the chat header." />
           <Step n={2} text="Messages the AI sent are marked with a small 🤖 AI assistant tag above the bubble, so it's always clear a reply wasn't typed by a teammate." />
-          <Step n={3} text="The moment anyone on the team sends a reply on that conversation, the AI automatically stops replying there — you'll see a 'Resume AI' button in the header if you want to hand it back to the AI later." />
+          <Step n={3} text="The moment anyone on the team sends a reply on that conversation, the AI automatically stops replying there — you'll see a 'Resume AI' button in the header if you want to hand it back to the AI later. To stop the AI on a chat without replying, click 'Pause AI' in the header." />
         </div>
 
         <Note>

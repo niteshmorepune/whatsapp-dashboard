@@ -40,6 +40,7 @@ export function ThreadView({ conversationId, prefill }: ThreadViewProps) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   const [resumingAi, setResumingAi] = useState(false);
+  const [pausingAi, setPausingAi] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +117,25 @@ export function ThreadView({ conversationId, prefill }: ThreadViewProps) {
     }
   }
 
+  // Manual counterpart to Resume AI (2026-09-23): previously the only way to
+  // stop the assistant on a chat was to send a human reply (POST /api/send
+  // sets aiMuted), so an agent could resume the AI but never turn it off
+  // without messaging the customer. Same PATCH, same per-conversation flag —
+  // it also stops the goal-question flow, which runs behind the same check.
+  async function handlePauseAi() {
+    if (!conversation) return;
+    setPausingAi(true);
+    try {
+      await axios.patch(`/api/conversations/${conversationId}`, { aiMuted: true });
+      await fetchData();
+      toast.success("AI assistant paused on this conversation");
+    } catch {
+      toast.error("Failed to pause AI");
+    } finally {
+      setPausingAi(false);
+    }
+  }
+
   async function handleResolve() {
     if (!conversation) return;
     const newStatus = conversation.status === "RESOLVED" ? "OPEN" : "RESOLVED";
@@ -186,11 +206,22 @@ export function ThreadView({ conversationId, prefill }: ThreadViewProps) {
                   <Bot className="w-3 h-3 mr-1" /> AI handling
                 </Badge>
               )}
+              {!conversation.aiMuted && conversation.whatsappNumber?.aiMode !== "FORCE_OFF" && (
+                <button
+                  onClick={handlePauseAi}
+                  disabled={pausingAi}
+                  title="Stop the AI assistant (and its goal questions) from replying on this conversation until someone resumes it"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:border-gray-600 transition"
+                >
+                  {pausingAi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />}
+                  Pause AI
+                </button>
+              )}
               {conversation.aiMuted && (
                 <button
                   onClick={handleResumeAi}
                   disabled={resumingAi}
-                  title="A human reply muted the AI assistant on this conversation — resume it"
+                  title="The AI assistant is paused on this conversation (by a human reply or Pause AI) — resume it"
                   className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:border-gray-600 transition"
                 >
                   {resumingAi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />}
