@@ -59,6 +59,10 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [numbers, setNumbers] = useState<WhatsappNumber[]>([]);
   const [loading, setLoading] = useState(true);
+  // Deactivated agents are hidden by default (2026-09-23, owner asked to
+  // "delete" a departed agent) — deactivation is this app's delete, so the
+  // account and their message history stay intact and can be reactivated.
+  const [showDeactivated, setShowDeactivated] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -158,6 +162,16 @@ export default function AgentsPage() {
           <h1 className="text-lg font-semibold text-white">Agents</h1>
           <p className="text-xs text-gray-500 mt-0.5">Manage your support team members</p>
         </div>
+        <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1.5 text-xs text-gray-400">
+          <input
+            type="checkbox"
+            checked={showDeactivated}
+            onChange={(e) => setShowDeactivated(e.target.checked)}
+            className="rounded border-gray-700 bg-gray-800 text-green-500 focus:ring-green-500"
+          />
+          Show deactivated ({agents.filter((a) => !a.isActive).length})
+        </label>
         <button
           onClick={() => setShowCreate(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition"
@@ -165,6 +179,7 @@ export default function AgentsPage() {
           <Plus className="w-4 h-4" />
           Invite Agent
         </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -186,7 +201,7 @@ export default function AgentsPage() {
               </tr>
             </thead>
             <tbody>
-              {agents.map((agent) => (
+              {agents.filter((agent) => showDeactivated || agent.isActive).map((agent) => (
                 <tr
                   key={agent.id}
                   className="border-b border-gray-800/50 hover:bg-gray-800/20 transition"
