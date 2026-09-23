@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { agentHasAccessToNumber, isConversationVisibleGivenAccess } from "@/lib/whatsapp-numbers";
+import { agentHasAccessToNumber, isConversationVisibleGivenAccess, VISIBILITY_LINE_SELECT } from "@/lib/whatsapp-numbers";
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +18,7 @@ export async function GET(
       select: {
         whatsappNumberId: true,
         assignees: { select: { agentId: true, coverUntil: true } },
-        whatsappNumber: { select: { restrictToOwnLeads: true } },
+        whatsappNumber: { select: VISIBILITY_LINE_SELECT },
       },
     });
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });

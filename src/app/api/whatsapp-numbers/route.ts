@@ -31,6 +31,7 @@ export async function GET() {
           aiMode: true,
           businessHours: true,
           restrictToOwnLeads: true,
+          hideUnassignedFromAgents: true,
           _count: { select: { conversations: true } },
         },
         orderBy: { createdAt: "asc" },

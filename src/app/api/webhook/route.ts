@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents, getConnectedAgentIds } from "@/lib/sse";
 import { sendPushToAgents } from "@/lib/webpush";
-import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { getNumberByPhoneNumberId, getAgentIdsWithNumberAccess, getEligibleAgentIdsForConversationId } from "@/lib/whatsapp-numbers";
 import { maybeReplyWithAi } from "@/lib/ai-assistant";
 import { notifyCrm, notifyCrmMessageFailed } from "@/lib/crm-notify";
 import { extractStatusError } from "@/lib/meta";
@@ -297,8 +297,9 @@ async function handleInboundMessage(
     },
   });
 
-  // Broadcast only to agents granted this conversation's line
-  const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
+  // Broadcast (and push) only to agents who could open this conversation —
+  // line access AND the line's assignment rule, not every line agent.
+  const eligibleAgentIds = await getEligibleAgentIdsForConversationId(conversation.id);
   broadcastToAgents(eligibleAgentIds, "new-message", {
     conversationId: conversation.id,
     message,

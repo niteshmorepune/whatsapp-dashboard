@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendTextMessage, sendInteractiveListMessage } from "@/lib/meta";
-import { toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { toMetaConfig, getEligibleAgentIdsForConversationId } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents } from "@/lib/sse";
 import { notifyCrm } from "@/lib/crm-notify";
 import { getCrmLeadContext, type CrmLeadContext } from "@/lib/crm-lead-context";
@@ -380,7 +380,7 @@ async function sendAndPersist(
     senderType: "ai",
   });
 
-  const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
+  const eligibleAgentIds = await getEligibleAgentIdsForConversationId(conversation.id);
   broadcastToAgents(eligibleAgentIds, "new-message", {
     conversationId: conversation.id,
     message,

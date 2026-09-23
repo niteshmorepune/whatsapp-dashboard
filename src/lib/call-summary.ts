@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { broadcastToAgents } from "@/lib/sse";
-import { getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { getEligibleAgentIdsForConversationId } from "@/lib/whatsapp-numbers";
 import { notifyCrmCallLog } from "@/lib/crm-notify";
 import type { CallStatus } from "@prisma/client";
 
@@ -70,7 +70,7 @@ export async function recordCallSummaryMessage(
     include: { contact: true, assignees: { include: { agent: true } } },
   });
 
-  const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumberId);
+  const eligibleAgentIds = await getEligibleAgentIdsForConversationId(conversationId);
   broadcastToAgents(eligibleAgentIds, "new-message", { conversationId, message, conversation: fullConversation });
   broadcastToAgents(eligibleAgentIds, "conversation-updated", { conversation: fullConversation });
 }

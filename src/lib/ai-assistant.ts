@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendTextMessage } from "@/lib/meta";
-import { toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { toMetaConfig, getEligibleAgentIdsForConversationId } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents } from "@/lib/sse";
 import { generateAiReply } from "@/lib/ai-reply";
 import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/lib/business-hours";
@@ -193,7 +193,7 @@ export async function maybeReplyWithAi(
       senderType: "ai",
     });
 
-    const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
+    const eligibleAgentIds = await getEligibleAgentIdsForConversationId(conversation.id);
     broadcastToAgents(eligibleAgentIds, "new-message", {
       conversationId: conversation.id,
       message,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { inspect } from "util";
 import { prisma } from "@/lib/prisma";
 import { sendTemplateMessage, extractMetaErrorMessage } from "@/lib/meta";
-import { toMetaConfig, getAgentIdsWithNumberAccess } from "@/lib/whatsapp-numbers";
+import { toMetaConfig, getEligibleAgentIdsForConversationId } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents } from "@/lib/sse";
 import { isServiceKeyRequest } from "@/lib/service-key";
 
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
       include: { contact: true, assignees: { include: { agent: true } } },
     });
 
-    const eligibleAgentIds = await getAgentIdsWithNumberAccess(whatsappNumber.id);
+    const eligibleAgentIds = await getEligibleAgentIdsForConversationId(conversation.id);
     broadcastToAgents(eligibleAgentIds, "new-message", {
       conversationId: conversation.id,
       message,

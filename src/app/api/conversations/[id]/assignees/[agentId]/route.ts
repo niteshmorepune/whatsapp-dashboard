@@ -7,6 +7,7 @@ import {
   agentHasAccessToNumber,
   isConversationVisibleGivenAccess,
   getEligibleAgentIdsForConversation,
+  VISIBILITY_LINE_SELECT,
 } from "@/lib/whatsapp-numbers";
 
 /**
@@ -27,7 +28,7 @@ export async function DELETE(
       where: { id: resolvedParams.id },
       include: {
         assignees: { select: { agentId: true, coverUntil: true } },
-        whatsappNumber: { select: { restrictToOwnLeads: true } },
+        whatsappNumber: { select: VISIBILITY_LINE_SELECT },
       },
     });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
