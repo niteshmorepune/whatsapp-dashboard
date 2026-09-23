@@ -7,6 +7,7 @@ import {
   agentHasAccessToNumber,
   isConversationVisibleGivenAccess,
   getEligibleAgentIdsForConversation,
+  VISIBILITY_LINE_SELECT,
 } from "@/lib/whatsapp-numbers";
 import { resolveAiLiveState, getHolidayDateKeys, type BusinessHours } from "@/lib/business-hours";
 
@@ -31,7 +32,7 @@ export async function GET(
             businessNumber: true,
             aiMode: true,
             businessHours: true,
-            restrictToOwnLeads: true,
+            ...VISIBILITY_LINE_SELECT,
           },
         },
       },
@@ -89,7 +90,7 @@ export async function PATCH(
       where: { id: resolvedParams.id },
       include: {
         assignees: { select: { agentId: true, coverUntil: true } },
-        whatsappNumber: { select: { restrictToOwnLeads: true } },
+        whatsappNumber: { select: VISIBILITY_LINE_SELECT },
       },
     });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });

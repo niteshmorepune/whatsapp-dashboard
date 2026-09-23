@@ -26,6 +26,9 @@ export interface WhatsappNumber {
   // once they're one of its assignees (CRM-synced owner/telecaller, or a
   // manual claim) — an unclaimed conversation stays visible to everyone.
   restrictToOwnLeads?: boolean;
+  // With restrictToOwnLeads: an UNCLAIMED conversation is ADMIN-only instead
+  // of visible to every line agent — agents see strictly their own chats.
+  hideUnassignedFromAgents?: boolean;
   _count?: { conversations: number };
 }
 

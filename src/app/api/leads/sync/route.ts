@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { agentHasAccessToNumber, getEligibleAgentIdsForConversation } from "@/lib/whatsapp-numbers";
+import { agentHasAccessToNumber, getEligibleAgentIdsForConversation, VISIBILITY_LINE_SELECT } from "@/lib/whatsapp-numbers";
 import { broadcastToAgents, sendToAgent } from "@/lib/sse";
 import { isServiceKeyRequest } from "@/lib/service-key";
 
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
         include: {
           contact: true,
           assignees: { include: { agent: true } },
-          whatsappNumber: { select: { restrictToOwnLeads: true } },
+          whatsappNumber: { select: VISIBILITY_LINE_SELECT },
         },
       });
 

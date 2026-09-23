@@ -56,6 +56,7 @@ export default function NumbersPage() {
   const [aiMode, setAiMode] = useState<AiMode>("AUTO");
   const [businessHours, setBusinessHours] = useState<DayHours[]>(DEFAULT_BUSINESS_HOURS);
   const [restrictToOwnLeads, setRestrictToOwnLeads] = useState(false);
+  const [hideUnassignedFromAgents, setHideUnassignedFromAgents] = useState(false);
 
   if (session && session.user.role !== "ADMIN") {
     redirect("/inbox");
@@ -85,6 +86,7 @@ export default function NumbersPage() {
     setAiMode(n.aiMode ?? "AUTO");
     setBusinessHours(n.businessHours && n.businessHours.length ? n.businessHours : DEFAULT_BUSINESS_HOURS);
     setRestrictToOwnLeads(n.restrictToOwnLeads ?? false);
+    setHideUnassignedFromAgents(n.hideUnassignedFromAgents ?? false);
   }
 
   function updateDayHours(day: number, patch: Partial<DayHours>) {
@@ -123,6 +125,7 @@ export default function NumbersPage() {
         aiMode,
         businessHours,
         restrictToOwnLeads,
+        hideUnassignedFromAgents,
       };
       if (editForm.accessToken) payload.accessToken = editForm.accessToken;
       await axios.patch(`/api/whatsapp-numbers/${editTarget.id}`, payload);
@@ -193,7 +196,7 @@ export default function NumbersPage() {
                       <span title="Agents see only conversations assigned to them here">
                         <Badge variant="blue">
                           <Lock className="w-3 h-3 mr-1" />
-                          Own leads only
+                          {n.hideUnassignedFromAgents ? "Assigned only" : "Own leads only"}
                         </Badge>
                       </span>
                     )}
@@ -323,7 +326,8 @@ export default function NumbersPage() {
           <p className="text-xs text-gray-500 mb-3">
             When on, a non-admin agent granted this line only sees a conversation once they&apos;re assigned to
             it (synced automatically from the CRM&apos;s Lead owner/Telecaller, or claimed manually here). An
-            unclaimed conversation stays visible to every agent on this line. Admins always see everything.
+            unclaimed conversation stays visible to every agent on this line, unless you also hide unassigned
+            conversations below. Admins always see everything.
           </p>
           <label className="flex items-center gap-2 text-sm text-gray-300">
             <input
@@ -333,6 +337,16 @@ export default function NumbersPage() {
               className="rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
             />
             Restrict agents to their own assigned conversations on this line
+          </label>
+          <label className={`flex items-center gap-2 text-sm mt-2 ${restrictToOwnLeads ? "text-gray-300" : "text-gray-600"}`}>
+            <input
+              type="checkbox"
+              checked={hideUnassignedFromAgents}
+              disabled={!restrictToOwnLeads}
+              onChange={(e) => setHideUnassignedFromAgents(e.target.checked)}
+              className="rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+            />
+            Also hide unassigned conversations from agents (admins only until someone is assigned)
           </label>
         </div>
 

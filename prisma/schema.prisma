@@ -114,6 +114,14 @@ model WhatsappNumber {
   // every conversation. Default false keeps every existing line (Support)
   // behaving exactly as before — a shared team inbox.
   restrictToOwnLeads Boolean           @default(false)
+  // Only meaningful with restrictToOwnLeads. When true, an UNCLAIMED
+  // conversation (no active assignees) is ADMIN-only instead of visible to
+  // every line-granted agent — an agent sees strictly the chats assigned to
+  // them. Added 2026-09-23 for Marketing: a newly added agent saw all 72
+  // unclaimed Marketing chats, not just the one lead assigned to him.
+  // Default false keeps Support (whose agents work the unclaimed queue)
+  // unchanged. See whatsapp-numbers.ts.
+  hideUnassignedFromAgents Boolean     @default(false)
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   conversations  Conversation[]
