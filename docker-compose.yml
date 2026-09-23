@@ -57,6 +57,9 @@ services:
       # Syncs an answered WhatsApp call into the CRM's own CallLog — see
       # src/lib/call-summary.ts's syncCompletedCallToCrm().
       - CRM_CALL_LOG_URL=${CRM_CALL_LOG_URL}
+      # Two-way contact-name sync: a manual rename here updates the CRM — see
+      # src/lib/crm-notify.ts's notifyCrmContactName().
+      - CRM_CONTACT_NAME_URL=${CRM_CONTACT_NAME_URL}
     depends_on:
       db:
         condition: service_healthy
