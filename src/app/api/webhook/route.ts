@@ -215,19 +215,7 @@ async function handleInboundMessage(
     mediaType = "location";
   }
 
-  // Find or create contact
-  const contact = await prisma.contact.upsert({
-    where: { phone },
-    create: {
-      phone,
-      name: contactInfo?.profile?.name ?? null,
-    },
-    update: {
-      name: contactInfo?.profile?.name
-        ? contactInfo.profile.name
-        : undefined,
-    },
-  });
+  const contact = await findOrCreateContact(phone, contactInfo?.profile?.name);
 
   // A customer's own "stop"/"unsubscribe"-style message is a real opt-out
   // request, not just something the AI should politely acknowledge in text
@@ -273,7 +261,9 @@ async function handleInboundMessage(
   // formatted).
   notifyCrm({
     phone,
-    contactName: contactInfo?.profile?.name ?? null,
+    // The contact's saved name (possibly a staff correction), not the raw
+    // WhatsApp profile name — the CRM uses this to name a new Lead.
+    contactName: contact.name ?? null,
     message: content,
     conversationId: conversation.id,
     whatsappNumber,
@@ -337,6 +327,28 @@ async function handleInboundMessage(
  * second real call site existed, to keep the windowExpiresAt/RESOLVED-
  * reopening logic from drifting between the two.
  */
+/**
+ * The sender's WhatsApp profile name only fills in a contact that has no
+ * name yet — it never replaces one. Previously every inbound message/call
+ * overwrote Contact.name with the profile name, silently undoing a staff
+ * member's correction the moment that person messaged again (team-reported,
+ * 2026-09-23). Names are now kept in sync with the CRM instead — see
+ * /api/contacts/sync-name and notifyCrmContactName().
+ */
+async function findOrCreateContact(phone: string, profileName: string | undefined) {
+  const contact = await prisma.contact.upsert({
+    where: { phone },
+    create: { phone, name: profileName || null },
+    update: {},
+  });
+
+  if (!contact.name && profileName) {
+    return prisma.contact.update({ where: { id: contact.id }, data: { name: profileName } });
+  }
+
+  return contact;
+}
+
 async function findOrCreateConversation(contactId: string, whatsappNumberId: string) {
   const existing = await prisma.conversation.findFirst({
     where: {
@@ -452,13 +464,7 @@ async function handleCallEvent(
     const existing = await prisma.call.findUnique({ where: { metaCallId: call.id } });
     if (existing) return;
 
-    const contact = await prisma.contact.upsert({
-      where: { phone: call.from },
-      create: { phone: call.from, name: contactInfo?.profile?.name ?? null },
-      update: {
-        name: contactInfo?.profile?.name ? contactInfo.profile.name : undefined,
-      },
-    });
+    const contact = await findOrCreateContact(call.from, contactInfo?.profile?.name);
 
     const conversation = await findOrCreateConversation(contact.id, whatsappNumber.id);
 

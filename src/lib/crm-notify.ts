@@ -156,3 +156,36 @@ export function notifyCrmCallLog(params: NotifyCrmCallLogParams): void {
     }),
   }).catch(() => {});
 }
+
+interface NotifyCrmContactNameParams {
+  phone: string;
+  name: string;
+}
+
+/**
+ * wadesk.in -> CRM half of the two-way contact-name sync (2026-09-23): a
+ * staff member renamed a Contact here (PATCH /api/contacts/[id]), so the
+ * CRM renames the matching open Lead / Client contact person to match —
+ * team-reported, two different names for one person was confusing. See the
+ * CRM's WadeskContactNameController for the receiving end; the CRM applies
+ * it without echoing it back, and POST /api/contacts/sync-name (the reverse
+ * half) never calls this, so a rename can't loop between the two apps.
+ *
+ * Fire-and-forget, same contract as every other function in this file:
+ * never awaited, never throws, ships inert until CRM_CONTACT_NAME_URL is set.
+ */
+export function notifyCrmContactName(params: NotifyCrmContactNameParams): void {
+  if (!process.env.CRM_CONTACT_NAME_URL || !process.env.CRM_WEBHOOK_TOKEN) return;
+
+  fetch(process.env.CRM_CONTACT_NAME_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.CRM_WEBHOOK_TOKEN}`,
+    },
+    body: JSON.stringify({
+      phone: params.phone,
+      name: params.name,
+    }),
+  }).catch(() => {});
+}
